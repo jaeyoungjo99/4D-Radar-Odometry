@@ -1,0 +1,15 @@
+bool high_beam
+bool low_beam
+bool wipers
+bool right_signal
+bool left_signal
+bool brake_signal
+bool wipers_available
+bool low_beam_available
+bool high_beam_available
+bool right_blink_available
+bool left_blink_available
+bool brake_available
+bool speed_available
+uint8 speed
+uint8 shield_plus_settings

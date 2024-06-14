@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoku_utils</name>
+  <version>1.1.1</version>
+  <description>autoku_utils module</description>
+  <maintainer email="ys.na0220@gmail.com">YuseungNa</maintainer>
+
+  <license>TODO</license>
+
+  <buildtool_depend>mrt_cmake_modules</buildtool_depend>
+  <buildtool_export_depend>mrt_cmake_modules</buildtool_export_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>autoku_msgs</build_depend>
+  <build_depend>pcl_ros</build_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>autoku_msgs</build_export_depend>
+  <build_export_depend>pcl_ros</build_export_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>autoku_msgs</exec_depend>
+  <exec_depend>pcl_ros</exec_depend>
+  <test_depend>gtest</test_depend>
+  <depend>boost</depend>
+
+  <export>
+    <build_type condition="$ROS_VERSION == 1">catkin</build_type>
+    <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
+    <rosdoc config="../rosdoc.yaml" />
+  </export>
+</package>

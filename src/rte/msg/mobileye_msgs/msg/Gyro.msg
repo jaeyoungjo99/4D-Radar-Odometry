@@ -1,0 +1,2 @@
+bool gyro_sensor_data_available
+float32 x_axis_data

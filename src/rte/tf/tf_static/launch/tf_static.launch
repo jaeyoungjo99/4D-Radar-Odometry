@@ -1,0 +1,4 @@
+<launch>	
+	<rosparam file="config/system.yaml" command="load" />
+	<node pkg="tf_static" type="tf_static.py" name="tf_static" output="screen" respawn="true"/>
+</launch>

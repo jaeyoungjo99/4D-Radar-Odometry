@@ -1,0 +1,28 @@
+uint8 obstacle_id
+float32 obstacle_position_x
+float32 obstacle_position_y
+float32 obstacle_relative_velocity_x
+
+uint8 obstacle_type
+uint8 obstacle_status
+bool obstacle_brake_lights
+uint8 cut_in_and_out
+uint8 blinker_info
+uint8 obstacle_valid
+
+float32 obstacle_length
+float32 obstacle_width
+uint8 obstacle_age
+uint8 obstacle_lane
+uint8 cipv_flag
+
+float32 radar_position_x
+float32 radar_velocity_x
+uint8 radar_match_confidence
+uint8 matched_radar_id
+
+float32 obstacle_angle_rate
+float32 obstacle_scale_change
+float32 obstacle_object_accel_x
+bool obstacle_replaced
+float32 obstacle_angle

@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="kusv_can_to_geo" type="kusv_can_to_geo" name="kusv_can_to_geo" output="screen"/>
+</launch>

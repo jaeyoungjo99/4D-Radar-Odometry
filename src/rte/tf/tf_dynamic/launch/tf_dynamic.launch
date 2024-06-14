@@ -1,0 +1,4 @@
+<launch>	
+	<rosparam file="config/system.yaml" command="load" />
+	<node pkg="tf_dynamic" type="tf_dynamic.py" name="tf_dynamic" output="screen" respawn="true"/>
+</launch>

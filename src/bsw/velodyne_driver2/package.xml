@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>velodyne_driver2</name>
+  <version>1.0.0</version>
+  <description>The velodyne_driver2 package</description>
+
+  <maintainer email="soo4826@gmail.com">Jinsu Ha</maintainer>
+
+  <license>TODO</license>
+
+</package>

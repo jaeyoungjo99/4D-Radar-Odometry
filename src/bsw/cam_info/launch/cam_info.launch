@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+  <rosparam file="$(find cam_info)/../../../config/system.yaml" command="load"/>  
+  <node pkg="cam_info" type="cam_info" name="cam_info" output="screen"/>
+</launch>

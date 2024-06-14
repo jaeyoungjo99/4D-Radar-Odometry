@@ -1,0 +1,12 @@
+# std_msgs/Header
+std_msgs/Header header
+
+uint8 matching_status
+uint8 matching_type
+
+float64 lat_correction_m
+float64 lon_correction_m
+float64 yaw_correction_rad
+float64 lat_correction_std_m
+float64 lon_correction_std_m
+float64 yaw_correction_std_rad

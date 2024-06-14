@@ -1,0 +1,1 @@
+autoku_msgs/TrajectoryBoundaryPoint[] point

@@ -1,0 +1,11 @@
+<!-- -->
+<launch>
+
+  <arg name="config_file" default="$(find velodyne_driver)/config/lidar_driver_vlp32c.cfg"/>
+  <!-- <remap from="/velodyne/points" to="/velodyne_points" />
+  <remap from="/velodyne/packets" to="/velodyne_packets" /> -->
+  <node name="velodyne_ros1_lidar_driver" pkg="velodyne_ros1_lidar_driver" type="velodyne_ros1_lidar_driver">
+      <param name="config_file" value="$(arg config_file)" />
+  </node>
+
+</launch>

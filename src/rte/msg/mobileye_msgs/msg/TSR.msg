@@ -1,0 +1,6 @@
+uint8 vision_only_sign_type
+uint8 supplementary_sign_type
+float32 sign_position_x
+float32 sign_position_y
+float32 sign_position_z
+uint8 filter_type

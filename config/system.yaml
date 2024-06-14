@@ -1,0 +1,79 @@
+# Task ID
+task_id:
+  ## BSW
+  id_can_parser: 1
+  id_can_transmitter: 2
+  id_rscube_parser: 3
+  id_virtual_object_generator: 4
+  id_supervisor: 5
+
+  ## RTE
+  id_tf_frame: 10
+
+  ## HMI
+  id_hmi: 20
+
+  ## APP
+  # Localization
+  id_state_estimation: 30
+  # Perception
+  id_object_detection: 40
+  id_object_tracking: 41  
+  id_motion_prediction: 42  
+  id_pillar_detection: 43
+  id_detection_fusion: 44
+  id_detection_datagen: 45
+  # Planning
+  id_global_planning: 50
+  id_behavior_planning: 51
+  id_trajectory_planning: 52  
+  # Control
+  id_longitudinal_control: 60
+  id_lateral_control: 61
+  id_grip_manager: 62
+  id_control_param_estimation: 63
+  ## CarMaker
+  id_vehicle_driver: 70
+  id_object_driver: 71
+  id_vehicle_control: 72
+
+# Task period [s]
+task_period:
+  ## BSW
+  period_can_parser: 0.001
+  period_can_transmitter: 0.001
+  period_rscube_parser: 0.05
+  period_virtual_object_generator: 0.01
+  period_supervisor: 0.1
+  
+  ## RTE
+  period_tf_frame: 0.005
+  period_tf_static_frame: 1
+
+  ## HMI
+  period_hmi: 0.1
+
+  ## APP
+  # Localization
+  period_state_estimation: 0.01
+  # Perception
+  period_object_detection: 0.01
+  period_object_tracking: 0.01
+  period_motion_prediction: 0.01
+  period_pillar_detection: 0.01
+  period_detection_fusion: 0.001
+  period_detection_datagen: 0.01
+  # Planning
+  period_global_planning: 0.02
+  period_behavior_planning: 0.02
+  period_trajectory_planning: 0.05
+  # Control
+  period_longitudinal_control: 0.01
+  period_lateral_control: 0.02  
+  period_grip_manager: 0.01
+  period_control_param_estimation: 0.02  
+
+  ## CarMaker
+  period_vehicle_driver: 0.01
+  period_object_driver: 0.05
+  period_vehicle_control: 0.001

@@ -1,0 +1,27 @@
+name: Basic Build Workflow
+
+on:
+  - pull_request
+  - push
+
+jobs:
+  build-noetic:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-focal-ros-noetic-desktop-latest
+    steps:
+    - uses: ros-tooling/setup-ros@v0.6
+      with:
+        required-ros-distributions: noetic
+    - uses: ros-tooling/action-ros-ci@v0.3
+      with:
+        package-name: |
+          velodyne
+          velodyne_driver
+          velodyne_laserscan
+          velodyne_msgs
+          velodyne_pcl
+          velodyne_pointcloud
+        target-ros1-distro: noetic

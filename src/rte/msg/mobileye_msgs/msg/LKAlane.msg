@@ -1,0 +1,12 @@
+uint8 lane_type
+uint8 quality
+uint8 model_degree
+
+float32 position_parameter_c0
+float32 curvature_parameter_c2
+float32 curvature_derivative_c3
+float32 width_marking
+
+float32 heading_angle_parameter_c1
+float32 view_range
+bool view_range_availability

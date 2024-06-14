@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="car" default="hmg" /> 
+
+  <arg name="ailab_can_hardware_id" default="10037" />
+  <arg name="hmg_can_hardware_id" default="10644" />
+  <arg name="can_circuit_id_ch1" default="0" />
+  <arg name="can_circuit_id_ch2" default="1" />
+  <arg name="can_bit_rate" default="500000" />
+  <arg name="canfd_tseg1" default="15" />
+  <arg name="canfd_tseg2" default="4" />
+  <arg name="canfd_sjw" default="4" />
+  <arg name="canfd_data_rate" default="2000000" />
+
+  <node pkg="kvaser_interface" type="kvaser_can_bridge" name="kvaser_can_bridge_0" output="screen">
+    <param name="can_hardware_id" value="$(arg hmg_can_hardware_id)" if="$(eval car=='hmg')"/>
+    <param name="can_hardware_id" value="$(arg ailab_can_hardware_id)" if="$(eval car=='ailab')"/>
+    <param name="can_circuit_id" value="$(arg can_circuit_id_ch1)" />
+    <param name="can_bit_rate" value="$(arg can_bit_rate)" />
+    <param name="canfd" value="true" />
+    <param name="canfd_tseg1" value="$(arg canfd_tseg1)" />
+    <param name="canfd_tseg2" value="$(arg canfd_tseg2)" />
+    <param name="canfd_sjw" value="$(arg canfd_sjw)" />
+    <param name="canfd_data_rate" value="$(arg canfd_data_rate)" />
+  </node>
+
+  <node pkg="kvaser_interface" type="kvaser_can_bridge" name="kvaser_can_bridge_1" output="screen">
+    <param name="can_hardware_id" value="$(arg hmg_can_hardware_id)" if="$(eval car=='hmg')"/>
+    <param name="can_hardware_id" value="$(arg ailab_can_hardware_id)" if="$(eval car=='ailab')"/>
+    <param name="can_circuit_id" value="$(arg can_circuit_id_ch2)" />
+    <param name="can_bit_rate" value="$(arg can_bit_rate)" />
+    <param name="canfd" value="false" />
+    <param name="canfd_tseg1" value="$(arg canfd_tseg1)" />
+    <param name="canfd_tseg2" value="$(arg canfd_tseg2)" />
+    <param name="canfd_sjw" value="$(arg canfd_sjw)" />
+    <param name="canfd_data_rate" value="$(arg canfd_data_rate)" />
+  </node>
+
+
+</launch>
