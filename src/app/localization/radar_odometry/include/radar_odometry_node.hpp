@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <Eigen/Dense>
+#include <random>
 
 // ROS header
 #include <ros/ros.h>
@@ -123,7 +124,18 @@ class RadarOdometry : public AtomTask {
             }
 
             if(cfg_str_sensor_type_ == "radar"){
-                pcl::moveFromROSMsg(i_main_point_cloud_, *i_main_radar_ptr_);
+                pcl::moveFromROSMsg(i_main_point_cloud_, *temp_radar_ptr_);
+                i_main_radar_ptr_->points.clear();
+
+                int i_point_num = temp_radar_ptr_->points.size();
+                float f_p_dist;
+                for(int i = 0; i < i_point_num; i++){
+                    PointXYZPRVAE *iter_point = &temp_radar_ptr_->points[i];
+                    f_p_dist = sqrt(iter_point->x*iter_point->x + iter_point->y*iter_point->y + iter_point->z*iter_point->z); 
+                    if(f_p_dist < cfg_d_max_distance_m_){
+                        i_main_radar_ptr_->points.push_back(*iter_point);
+                    }
+                }
 
                 i_main_radar_raw_tuple_ = std::make_tuple(i_main_radar_ptr_, i_main_point_cloud_.header.frame_id, i_main_point_cloud_.header.stamp);
                 
@@ -156,6 +168,9 @@ class RadarOdometry : public AtomTask {
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
         Eigen::Vector3f FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
+        Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
+        Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices);
+        pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, float margin, int max_iterations);
 
         double GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct);
         void EstimateEgoMotion(RadarDataStruct i_radar_struct, CanStruct & o_can_struct);
@@ -185,6 +200,7 @@ class RadarOdometry : public AtomTask {
 
         pcl::PointCloud<pcl::PointXYZI>::Ptr i_main_lidar_ptr_;
         pcl::PointCloud<PointXYZPRVAE>::Ptr i_main_radar_ptr_;
+        pcl::PointCloud<PointXYZPRVAE>::Ptr temp_radar_ptr_;
         std::tuple<pcl::PointCloud<pcl::PointXYZI>::Ptr, string, ros::Time> i_main_lidar_raw_tuple_;
         std::tuple<pcl::PointCloud<PointXYZPRVAE>::Ptr, string, ros::Time> i_main_radar_raw_tuple_;
 
@@ -218,6 +234,8 @@ class RadarOdometry : public AtomTask {
         double cfg_d_ego_to_radar_x_m_;
         double cfg_d_ego_to_radar_yaw_deg_;
         double cfg_d_radar_delay_sec_; 
+
+        double cfg_d_max_distance_m_;
         
         
 };

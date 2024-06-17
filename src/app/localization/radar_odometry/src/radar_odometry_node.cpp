@@ -18,6 +18,7 @@ RadarOdometry::RadarOdometry(int id, std::string task_node, double period)
 {
     i_main_lidar_ptr_.reset(new pcl::PointCloud<pcl::PointXYZI>());
     i_main_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
+    temp_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
 
     o_vel_comp_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
     o_cur_radar_global_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
@@ -171,8 +172,11 @@ void RadarOdometry::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_yaw_deg", cfg_d_ego_to_radar_yaw_deg_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_yaw_deg");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_delay_sec_", cfg_d_radar_delay_sec_) == false ) {
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_delay_sec", cfg_d_radar_delay_sec_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_delay_sec_");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "max_distance_m", cfg_d_max_distance_m_) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_distance_m");
         }
 
         ROS_WARN("RadarOdometry: INI Updated!");
@@ -227,19 +231,28 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
 
         o_vel_comp_radar_ptr_->points.push_back(comp_point);
 
-        if (abs(d_comp_vel_ms) < 3.0){
+        if (abs(d_comp_vel_ms) < 1.0){
             static_radar_ptr_->points.push_back(iter_point);
         }
     }
 
-    Eigen::Vector3f est_coeffs = FitQuadratic(static_radar_ptr_);
-    
-    double a = est_coeffs[0];
-    double b = est_coeffs[1];
-    double c = est_coeffs[2];
 
-    double d_est_azim = -b / (2 * a);
-    double d_est_vel = c - (b * b) / (4 * a);
+    
+    pcl::PointCloud<PointXYZPRVAE>::Ptr ransac_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
+    ransac_radar_ptr = RansacFit(i_radar_struct.points, 3, 100);
+
+    // Eigen::Vector3f est_coeffs = FitQuadratic(i_radar_struct.points);
+    Eigen::Vector2f est_vel = FitSine(ransac_radar_ptr);
+    
+    // double a = est_coeffs[0];
+    // double b = est_coeffs[1];
+    // double c = est_coeffs[2];
+
+    // double d_est_azim = -b / (2 * a);
+    // double d_est_vel = -(c - (b * b) / (4 * a));
+
+    double d_est_azim = atan2(est_vel[1], est_vel[0]);
+    double d_est_vel = sqrt(est_vel[0]*est_vel[0] + est_vel[1]*est_vel[1]);
 
     ROS_INFO_STREAM("RadarOdometry: Can vel: " << radar_v_total_can <<" ms, Can Heading "<<  radar_alpha_angle_can_rad * 180.0/M_PI << " deg");
     ROS_INFO_STREAM("RadarOdometry: Est vel: " << d_est_vel <<" ms, Est Heading "<<  d_est_azim * 180.0/M_PI << " deg");
@@ -253,10 +266,14 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
     // Radar pose DR with can
     Eigen::Matrix4f delta_pose = Eigen::Matrix4f::Identity();
 
-    double radar_dx = d_delta_radar_time_sec * radar_v_lon_can;
-    double radar_dy = d_delta_radar_time_sec * radar_v_lat_can;
-    double radar_dyaw = d_delta_radar_time_sec * i_can_struct_.yaw_rate_rad;
+    // double radar_dx = d_delta_radar_time_sec * radar_v_lon_can;
+    // double radar_dy = d_delta_radar_time_sec * radar_v_lat_can;
+    // double radar_dyaw = d_delta_radar_time_sec * i_can_struct_.yaw_rate_rad;
 
+    // Radar pose DR with Radar
+    double radar_dx = d_delta_radar_time_sec * d_est_vel * cos(d_est_azim + cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
+    double radar_dy = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
+    double radar_dyaw = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0) / cfg_d_ego_to_radar_x_m_;
 
     delta_pose(0, 0) = std::cos(radar_dyaw);
     delta_pose(0, 1) = -std::sin(radar_dyaw);
@@ -270,7 +287,7 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
 
     radar_pose_ = radar_pose_ * delta_pose;
 
-    pcl::transformPointCloud(*o_vel_comp_radar_ptr_, *o_cur_radar_global_ptr_,  radar_pose_ * radar_calib_pose_);
+    pcl::transformPointCloud(*static_radar_ptr_, *o_cur_radar_global_ptr_,  radar_pose_ * radar_calib_pose_);
 
     // Radar Vel arrow
     o_radar_vel_heading_markers_.markers.clear();
@@ -346,15 +363,9 @@ Eigen::Vector3f RadarOdometry::FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>
     Eigen::MatrixXf A(cloud->points.size(), 3);
     Eigen::VectorXf b(cloud->points.size());
 
-    double max_azim = -FLT_MAX;
-    double min_azim = FLT_MAX;
-
     for (size_t i = 0; i < cloud->points.size(); ++i) {
         float x = cloud->points[i].azi_angle * M_PI/180.0f;
         float y = cloud->points[i].vel;
-
-        if(cloud->points[i].azi_angle > max_azim) max_azim = cloud->points[i].azi_angle;
-        if(cloud->points[i].azi_angle < min_azim) min_azim = cloud->points[i].azi_angle;
 
         A(i, 0) = x * x;
         A(i, 1) = x;
@@ -362,12 +373,102 @@ Eigen::Vector3f RadarOdometry::FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>
         b(i) = y;
     }
 
-    ROS_INFO_STREAM("RadarOdometry: Max Azim: " << max_azim <<" Min Azim "<<  min_azim << " deg");
-
     // Solve the normal equation A^T * A * coeffs = A^T * b
     Eigen::Vector3f coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
     
     return coeffs;  // [a, b, c] coefficients
+}
+
+Eigen::Vector2f RadarOdometry::FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud){
+    Eigen::MatrixXf A(cloud->points.size(), 2);
+    Eigen::VectorXf b(cloud->points.size());
+
+    for (size_t i = 0; i < cloud->points.size(); ++i) {
+        float x = cloud->points[i].azi_angle * M_PI/180.0f;
+        float y = -cloud->points[i].vel;
+
+        A(i, 0) = cos(x);
+        A(i, 1) = sin(x);
+        b(i) = y;
+    }
+
+    // Solve the normal equation A^T * A * coeffs = A^T * b
+    Eigen::Vector2f coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
+    
+    return coeffs;  // [vx, vy]
+}
+
+Eigen::Vector2f RadarOdometry::FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices) {
+    Eigen::MatrixXf A(indices.size(), 2);
+    Eigen::VectorXf b(indices.size());
+
+    for (size_t i = 0; i < indices.size(); ++i) {
+        float x = cloud->points[indices[i]].azi_angle * M_PI / 180.0f;
+        float y = -cloud->points[indices[i]].vel;
+
+        A(i, 0) = cos(x);
+        A(i, 1) = sin(x);
+        b(i) = y;
+    }
+
+    // Solve the normal equation A^T * A * coeffs = A^T * b
+    Eigen::Vector2f coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
+
+    return coeffs;  // [vx, vy]
+}
+
+pcl::PointCloud<PointXYZPRVAE>::Ptr RadarOdometry::RansacFit(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, float margin, int max_iterations) {
+    pcl::PointCloud<PointXYZPRVAE>::Ptr inliers(new pcl::PointCloud<PointXYZPRVAE>);
+    std::vector<int> best_inliers;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, cloud->points.size() - 1);
+
+    int best_inliers_count = 0;
+    Eigen::Vector2f best_coeffs;
+
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        // Randomly select 2 points
+        std::vector<int> sample_indices = {dis(gen), dis(gen)};
+
+        // Fit model to the sample points
+        Eigen::Vector2f coeffs = FitSine(cloud, sample_indices);
+
+        // Count inliers
+        std::vector<int> current_inliers;
+        for (size_t i = 0; i < cloud->points.size(); ++i) {
+            float x = cloud->points[i].azi_angle * M_PI / 180.0f;
+            float y = -cloud->points[i].vel;
+            float predicted_y = coeffs[0] * cos(x) + coeffs[1] * sin(x);
+
+            if (std::abs(predicted_y - y) <= margin) {
+                current_inliers.push_back(i);
+            }
+        }
+
+        // Update the best model if the current one is better
+        if (current_inliers.size() > best_inliers_count) {
+            best_inliers_count = current_inliers.size();
+            best_coeffs = coeffs;
+            // inliers->points.clear();
+            // for (int idx : current_inliers) {
+            //     inliers->points.push_back(cloud->points[idx]);
+            // }
+
+            best_inliers = current_inliers;
+        }
+    }
+    
+    
+    for (int idx : best_inliers) {
+        inliers->points.push_back(cloud->points[idx]);
+    }
+        
+    inliers->width = inliers->points.size();
+    inliers->height = 1;
+    inliers->is_dense = true;
+
+    return inliers;
 }
 
 double RadarOdometry::GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct)
