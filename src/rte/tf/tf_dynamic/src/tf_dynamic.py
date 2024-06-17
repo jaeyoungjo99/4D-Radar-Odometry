@@ -14,6 +14,7 @@ from tf.transformations import quaternion_from_euler
 
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
+from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
 
 from autoku_msgs.msg import VehicleState
@@ -37,6 +38,7 @@ class TransformFrameDynamic(object):
         self._tf_broadcaster = tf.TransformBroadcaster()
         self.frame_list = []
         self.vehicle_state = VehicleState()
+        self.radar_state = Odometry()
         self.dae = self.visualize_dae('package://tf_dynamic/dae/Ioniq5.stl', 'ego_frame','ego_vehicle', (1.5,0.0,0.0), (0.0,0.0,180.0))
         
         # Publisher
@@ -46,7 +48,10 @@ class TransformFrameDynamic(object):
         # Subscriber
         self.vehicle_state_subscriber = rospy.Subscriber(
             "app/loc/vehicle_state", VehicleState, self.on_vehicle_state)        
-
+        
+        self.radar_odom_subscriber = rospy.Subscriber(
+            "radar_odom", Odometry, self.on_radar_odom)        
+        
     def destroy(self):
         """
         Destroy all objects
@@ -59,6 +64,13 @@ class TransformFrameDynamic(object):
         vehicle_state_driver
         """
         self.vehicle_state = data
+
+    def on_radar_odom(self, data):
+        """
+        Callback on radar odom event from
+    
+        """
+        self.radar_state = data
 
     def visualize_dae(self, object_name, frame_id, name_space, xyz, rpy):
         """
@@ -110,6 +122,26 @@ class TransformFrameDynamic(object):
         transform.rotation.w = q[3]
         
         return transform
+    
+    def calculate_transform_from_radar_to_world(self):
+        """
+        Calculate position difference between 
+        /ego_frame and /world in Cartesian coordinate
+        """
+        transform = Transform()
+        transform.translation.x = self.radar_state.pose.pose.position.x
+        transform.translation.y = self.radar_state.pose.pose.position.y
+        transform.translation.z = self.radar_state.pose.pose.position.z
+        # q = quaternion_from_euler(self.vehicle_state.roll, self.vehicle_state.pitch, (self.vehicle_state.yaw))
+        # q = quaternion_from_euler(0.0, 0.0, (self.radar_state.pose.pose.position))
+
+        transform.rotation = self.radar_state.pose.pose.orientation
+        # transform.rotation.x = q[0]
+        # transform.rotation.y = q[1]
+        # transform.rotation.z = q[2]
+        # transform.rotation.w = q[3]
+        
+        return transform
 
     def add_frame(self, type, child, parent, xyz, q, time):
         """
@@ -145,6 +177,8 @@ class TransformFrameDynamic(object):
                 if frame["type"] != 'static':
                     if frame["child"] == 'ego_frame':
                         frame["transform"] = self.calculate_transform_from_ego_to_world()
+                    if frame["child"] == 'afi910':
+                        frame["transform"] = self.calculate_transform_from_radar_to_world()
                     frame["time"] = update_time
 
     def run(self):
@@ -153,13 +187,21 @@ class TransformFrameDynamic(object):
         """
         rate = rospy.Rate(1 / self._period)
 
-        update_time = self.vehicle_state.header.stamp
+        # update_time = self.vehicle_state.header.stamp
 
-        transform = self.calculate_transform_from_ego_to_world()
-        self.add_frame('dynamic', 'ego_frame', 'world',
+        # transform = self.calculate_transform_from_ego_to_world()
+        # self.add_frame('dynamic', 'ego_frame', 'world',
+        #     [transform.translation.x, transform.translation.y, transform.translation.z], 
+        #     [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w], update_time)
+
+        update_time = self.radar_state.header.stamp
+
+        transform = self.calculate_transform_from_radar_to_world()
+        self.add_frame('dynamic', 'afi910', 'world',
             [transform.translation.x, transform.translation.y, transform.translation.z], 
             [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w], update_time)
-                 
+
+
         while not rospy.is_shutdown():
             self.update_frame()
             for frame in self.frame_list:

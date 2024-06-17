@@ -1,31 +1,33 @@
 {
-  "configurations": [
-    {
-      "browse": {
-        "databaseFilename": "${default}",
-        "limitSymbolsToIncludedHeaders": false
-      },
-      "includePath": [
-        "/home/jaeyoung/git/4D-Radar-Odometry/devel/include/**",
-        "/home/jaeyoung/git/fast_lio_ws/devel/include/**",
-        "/home/jaeyoung/git/livox_ws/devel/include/**",
-        "/opt/ros/noetic/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/can_parser/include/**",
-        "/home/jaeyoung/git/fast_lio_ws/src/FAST_LIO/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/kvaser_interface/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/novatel_oem7_driver/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_driver/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_laserscan/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pcl/include/**",
-        "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pointcloud/include/**",
-        "/usr/include/**"
-      ],
-      "name": "ROS",
-      "intelliSenseMode": "gcc-x64",
-      "compilerPath": "/usr/bin/gcc",
-      "cStandard": "gnu11",
-      "cppStandard": "c++14"
-    }
-  ],
-  "version": 4
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
+            },
+            "includePath": [
+                "/home/jaeyoung/git/4D-Radar-Odometry/devel/include/**",
+                "/home/jaeyoung/git/fast_lio_ws/devel/include/**",
+                "/home/jaeyoung/git/livox_ws/devel/include/**",
+                "/opt/ros/noetic/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/can_parser/include/**",
+                "/home/jaeyoung/git/fast_lio_ws/src/FAST_LIO/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/app/localization/radar_odometry/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/kvaser_interface/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/novatel_oem7_driver/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_driver/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_laserscan/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pcl/include/**",
+                "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pointcloud/include/**",
+                "/usr/include/**",
+                "${workspaceFolder}/src/app/utils/autoku_utils/include"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "c++14"
+        }
+    ],
+    "version": 4
 }
