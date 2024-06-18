@@ -26,6 +26,7 @@ RadarOdometry::RadarOdometry(int id, std::string task_node, double period)
     static_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
 
     radar_pose_ = Eigen::Matrix4f::Identity();
+    last_radar_pose_ = Eigen::Matrix4f::Identity();
     radar_calib_pose_ = Eigen::Matrix4f::Identity();
     d_last_radar_time_sec_ = 0.0f;
 }
@@ -41,7 +42,8 @@ void RadarOdometry::Init()
 
     ProcessINI();
 
-    s_main_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_, 10, &RadarOdometry::CallbackMainPointCloud, this, ros::TransportHints().tcpNoDelay());                               
+    s_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_pc1_, 10, &RadarOdometry::CallbackPointCloud, this, ros::TransportHints().tcpNoDelay());    
+    s_point_cloud2_ = nh.subscribe(cfg_str_sensor_topic_pc2_, 10, &RadarOdometry::CallbackPointCloud2, this, ros::TransportHints().tcpNoDelay());                               
     s_can_ = nh.subscribe(cfg_str_can_topic_, 10, &RadarOdometry::CallbackCAN, this, ros::TransportHints().tcpNoDelay());    
     s_imu_ = nh.subscribe(cfg_str_imu_topic_, 10, &RadarOdometry::CallbackIMU, this, ros::TransportHints().tcpNoDelay());    
 
@@ -55,6 +57,13 @@ void RadarOdometry::Init()
     radar_calib_pose_(0, 1) = -std::sin(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
     radar_calib_pose_(1, 0) = std::sin(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
     radar_calib_pose_(1, 1) = std::cos(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
+
+    // #ifdef USE_TBB
+    //     ROS_INFO("Building with TBB support");
+    // #else
+    //     ROS_INFO("Building without TBB support");
+    // #endif
+    
 }
 
 void RadarOdometry::Run()
@@ -76,7 +85,6 @@ void RadarOdometry::Run()
     else{
         std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
         cur_radar_struct = i_radar_struct_;
-        
     }
 
     {
@@ -84,7 +92,14 @@ void RadarOdometry::Run()
         cur_can_struct = i_can_struct_;
     }
 
-    RunRadarOdometry(cur_radar_struct);
+    if(cfg_str_sensor_type_=="lidar"){
+
+    }
+    else{
+        ROS_INFO("RadarOdometry: RunRadarOdometry");
+
+        RunRadarOdometry(cur_radar_struct);
+    }
 
     b_is_new_point_cloud_ = false;
     b_is_new_publish_ = true;
@@ -156,8 +171,11 @@ void RadarOdometry::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_type", cfg_str_sensor_type_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_type");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_topic", cfg_str_sensor_topic_) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_topic");
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_topic_pc1", cfg_str_sensor_topic_pc1_) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_topic_pc1");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_topic_pc2", cfg_str_sensor_topic_pc2_) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_topic_pc2");
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "can_topic", cfg_str_can_topic_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/can_topic");
@@ -204,27 +222,67 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
     d_last_radar_time_sec_ = i_radar_struct.timestamp;
     
 
-    double radar_v_lat_can = cfg_d_ego_to_radar_x_m_ * i_can_struct_.yaw_rate_rad;
-    double radar_v_lon_can = i_can_struct_.vel_mps;
-    double radar_alpha_angle_can_rad = atan2(radar_v_lat_can, radar_v_lon_can);
-    double radar_v_total_can = sqrt(radar_v_lat_can*radar_v_lat_can + radar_v_lon_can*radar_v_lon_can);
+    // double radar_v_lat_can = cfg_d_ego_to_radar_x_m_ * i_can_struct_.yaw_rate_rad;
+    // double radar_v_lon_can = i_can_struct_.vel_mps;
+    // double radar_alpha_angle_can_rad = atan2(radar_v_lat_can, radar_v_lon_can);
+    // double radar_v_total_can = sqrt(radar_v_lat_can*radar_v_lat_can + radar_v_lon_can*radar_v_lon_can);
 
-    ROS_INFO_STREAM("RadarOdometry: i_can_struct_.yaw_rate_rad: " << i_can_struct_.yaw_rate_rad);
-    ROS_INFO_STREAM("RadarOdometry: radar_alpha_angle_can_rad: " << radar_alpha_angle_can_rad);
+    // ROS_INFO_STREAM("RadarOdometry: i_can_struct_.yaw_rate_rad: " << i_can_struct_.yaw_rate_rad);
+    // ROS_INFO_STREAM("RadarOdometry: radar_alpha_angle_can_rad: " << radar_alpha_angle_can_rad);
+
+
+    // 1. Points Preprocessing based on CV model
+    // pcl::PointCloud<PointXYZPRVAE>::Ptr cv_margin_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
 
     double d_total_vel = 0.0;
     double d_total_comp_vel = 0.0;
-    for (int i = 0; i < i_point_cloud_num; i++)
-    {
-        PointXYZPRVAE iter_point, comp_point;
-        iter_point = i_radar_struct.points->points[i];
+    // for (int i = 0; i < i_point_cloud_num; i++)
+    // {
+    //     PointXYZPRVAE iter_point, comp_point;
+    //     iter_point = i_radar_struct.points->points[i];
 
-        double d_comp_vel_ms = GetEgoMotionCompVel(iter_point, i_can_struct_);
+        // double d_comp_vel_ms = GetEgoMotionCompVel(iter_point, i_can_struct_);
 
         // std::cout<<"Vel: "<<iter_point.vel<<" Comp Vel: "<<d_comp_vel_ms<<" azim: "<<iter_point.azi_angle<<std::endl;
 
-        d_total_vel += iter_point.vel;
-        d_total_comp_vel += d_comp_vel_ms;
+        // d_total_vel += iter_point.vel;
+        // d_total_comp_vel += d_comp_vel_ms;
+
+        // comp_point = iter_point;
+        // comp_point.vel = d_comp_vel_ms;
+
+        // o_vel_comp_radar_ptr_->points.push_back(comp_point);
+
+        // if (abs(d_comp_vel_ms) < 1.0){
+        //     static_radar_ptr_->points.push_back(iter_point);
+        // }
+    // }
+    
+    // 2. RANSAC 
+    pcl::PointCloud<PointXYZPRVAE>::Ptr ransac_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
+    ransac_radar_ptr = RansacFit(i_radar_struct.points, 3, 100);
+
+    // *o_vel_comp_radar_ptr_ = *ransac_radar_ptr;
+
+
+    // 3. LSQ Fitting
+    Eigen::Vector2f est_vel = FitSine(ransac_radar_ptr);
+
+    double d_est_azim = atan2(est_vel[1], est_vel[0]);
+    double d_est_vel = sqrt(est_vel[0]*est_vel[0] + est_vel[1]*est_vel[1]);
+
+    // Static Point Generation
+    CanStruct est_can_struct;
+    est_can_struct.vel_mps = d_est_vel;
+    est_can_struct.yaw_rate_rad = d_est_vel * sin(d_est_azim + cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0) / cfg_d_ego_to_radar_x_m_;
+    for (int i = 0; i < ransac_radar_ptr->points.size(); i++)
+    {
+        PointXYZPRVAE iter_point, comp_point;
+        iter_point = ransac_radar_ptr->points[i];
+
+        double d_comp_vel_ms = GetEgoMotionCompVel(iter_point, est_can_struct);
+
+        // std::cout<<"Vel: "<<iter_point.vel<<" Comp Vel: "<<d_comp_vel_ms<<" azim: "<<iter_point.azi_angle<<std::endl;
 
         comp_point = iter_point;
         comp_point.vel = d_comp_vel_ms;
@@ -236,32 +294,14 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
         }
     }
 
-
-    
-    pcl::PointCloud<PointXYZPRVAE>::Ptr ransac_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
-    ransac_radar_ptr = RansacFit(i_radar_struct.points, 3, 100);
-
-    // Eigen::Vector3f est_coeffs = FitQuadratic(i_radar_struct.points);
-    Eigen::Vector2f est_vel = FitSine(ransac_radar_ptr);
-    
-    // double a = est_coeffs[0];
-    // double b = est_coeffs[1];
-    // double c = est_coeffs[2];
-
-    // double d_est_azim = -b / (2 * a);
-    // double d_est_vel = -(c - (b * b) / (4 * a));
-
-    double d_est_azim = atan2(est_vel[1], est_vel[0]);
-    double d_est_vel = sqrt(est_vel[0]*est_vel[0] + est_vel[1]*est_vel[1]);
-
-    ROS_INFO_STREAM("RadarOdometry: Can vel: " << radar_v_total_can <<" ms, Can Heading "<<  radar_alpha_angle_can_rad * 180.0/M_PI << " deg");
+    // ROS_INFO_STREAM("RadarOdometry: Can vel: " << radar_v_total_can <<" ms, Can Heading "<<  radar_alpha_angle_can_rad * 180.0/M_PI << " deg");
     ROS_INFO_STREAM("RadarOdometry: Est vel: " << d_est_vel <<" ms, Est Heading "<<  d_est_azim * 180.0/M_PI << " deg");
 
-    double d_avg_vel = d_total_vel / i_point_cloud_num;
-    double d_avg_comp_vel = d_total_comp_vel / i_point_cloud_num;
+    // double d_avg_vel = d_total_vel / i_point_cloud_num;
+    // double d_avg_comp_vel = d_total_comp_vel / i_point_cloud_num;
 
-    ROS_INFO_STREAM("RadarOdometry: Avg vel: " << d_avg_vel <<" ms, "<<  d_avg_vel * 3.6 << "kph");
-    ROS_INFO_STREAM("RadarOdometry: Com vel: " << d_avg_comp_vel <<" ms, "<<  d_avg_comp_vel * 3.6 << "kph");
+    // ROS_INFO_STREAM("RadarOdometry: Avg vel: " << d_avg_vel <<" ms, "<<  d_avg_vel * 3.6 << "kph");
+    // ROS_INFO_STREAM("RadarOdometry: Com vel: " << d_avg_comp_vel <<" ms, "<<  d_avg_comp_vel * 3.6 << "kph");
 
     // Radar pose DR with can
     Eigen::Matrix4f delta_pose = Eigen::Matrix4f::Identity();
@@ -287,42 +327,42 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
 
     radar_pose_ = radar_pose_ * delta_pose;
 
-    pcl::transformPointCloud(*static_radar_ptr_, *o_cur_radar_global_ptr_,  radar_pose_ * radar_calib_pose_);
+    pcl::transformPointCloud(*ransac_radar_ptr, *o_cur_radar_global_ptr_,  radar_pose_ * radar_calib_pose_);
 
     // Radar Vel arrow
     o_radar_vel_heading_markers_.markers.clear();
 
-    visualization_msgs::Marker can_radar_vel_heading_marker;
-    can_radar_vel_heading_marker.header.frame_id = "afi910";
-    can_radar_vel_heading_marker.header.stamp = ros::Time::now();
-    can_radar_vel_heading_marker.ns = "can_radar_vel_heading";
+    // visualization_msgs::Marker can_radar_vel_heading_marker;
+    // can_radar_vel_heading_marker.header.frame_id = "afi910";
+    // can_radar_vel_heading_marker.header.stamp = ros::Time::now();
+    // can_radar_vel_heading_marker.ns = "can_radar_vel_heading";
 
-    can_radar_vel_heading_marker.id = 0;
-    can_radar_vel_heading_marker.type = visualization_msgs::Marker::ARROW;
-    can_radar_vel_heading_marker.action = visualization_msgs::Marker::ADD;
+    // can_radar_vel_heading_marker.id = 0;
+    // can_radar_vel_heading_marker.type = visualization_msgs::Marker::ARROW;
+    // can_radar_vel_heading_marker.action = visualization_msgs::Marker::ADD;
 
-    can_radar_vel_heading_marker.pose.position.x = 0.0;
-    can_radar_vel_heading_marker.pose.position.y = 0.0;
-    can_radar_vel_heading_marker.pose.position.z = 0.0;
+    // can_radar_vel_heading_marker.pose.position.x = 0.0;
+    // can_radar_vel_heading_marker.pose.position.y = 0.0;
+    // can_radar_vel_heading_marker.pose.position.z = 0.0;
 
-    tf::Quaternion can_quat = tf::createQuaternionFromYaw(radar_alpha_angle_can_rad - cfg_d_ego_to_radar_yaw_deg_*M_PI/180); // Y축 회전을 기준으로 화살표 방향 설정
-    can_radar_vel_heading_marker.pose.orientation.x = can_quat.x();
-    can_radar_vel_heading_marker.pose.orientation.y = can_quat.y();
-    can_radar_vel_heading_marker.pose.orientation.z = can_quat.z();
-    can_radar_vel_heading_marker.pose.orientation.w = can_quat.w();
+    // tf::Quaternion can_quat = tf::createQuaternionFromYaw(radar_alpha_angle_can_rad - cfg_d_ego_to_radar_yaw_deg_*M_PI/180); // Y축 회전을 기준으로 화살표 방향 설정
+    // can_radar_vel_heading_marker.pose.orientation.x = can_quat.x();
+    // can_radar_vel_heading_marker.pose.orientation.y = can_quat.y();
+    // can_radar_vel_heading_marker.pose.orientation.z = can_quat.z();
+    // can_radar_vel_heading_marker.pose.orientation.w = can_quat.w();
 
-    // 화살표의 크기 설정
-    can_radar_vel_heading_marker.scale.x = abs(radar_v_total_can);  // 화살표의 길이
-    can_radar_vel_heading_marker.scale.y = 0.2;  // 화살표의 샤프트 직경
-    can_radar_vel_heading_marker.scale.z = 0.2;  // 화살표의 헤드 직경
+    // // 화살표의 크기 설정
+    // can_radar_vel_heading_marker.scale.x = abs(radar_v_total_can);  // 화살표의 길이
+    // can_radar_vel_heading_marker.scale.y = 0.2;  // 화살표의 샤프트 직경
+    // can_radar_vel_heading_marker.scale.z = 0.2;  // 화살표의 헤드 직경
 
-    // 화살표의 색상 설정
-    can_radar_vel_heading_marker.color.r = 0.0f;
-    can_radar_vel_heading_marker.color.g = 1.0f;
-    can_radar_vel_heading_marker.color.b = 0.0f;
-    can_radar_vel_heading_marker.color.a = 1.0;
+    // // 화살표의 색상 설정
+    // can_radar_vel_heading_marker.color.r = 0.0f;
+    // can_radar_vel_heading_marker.color.g = 1.0f;
+    // can_radar_vel_heading_marker.color.b = 0.0f;
+    // can_radar_vel_heading_marker.color.a = 1.0;
 
-    o_radar_vel_heading_markers_.markers.push_back(can_radar_vel_heading_marker);
+    // o_radar_vel_heading_markers_.markers.push_back(can_radar_vel_heading_marker);
 
     //
     visualization_msgs::Marker est_radar_vel_heading_marker;
@@ -356,6 +396,18 @@ void RadarOdometry::RunRadarOdometry(RadarDataStruct i_radar_struct)
     est_radar_vel_heading_marker.color.a = 1.0;
 
     o_radar_vel_heading_markers_.markers.push_back(est_radar_vel_heading_marker);
+}
+
+pcl::PointCloud<PointXYZPRVAE>::Ptr RadarOdometry::CvFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const Eigen::Matrix4f mat_prediction){
+    pcl::PointCloud<PointXYZPRVAE>::Ptr filtered_cloud(new pcl::PointCloud<PointXYZPRVAE>);
+
+
+
+    filtered_cloud->width = filtered_cloud->points.size();
+    filtered_cloud->height = 1;
+    filtered_cloud->is_dense = true;
+
+    return filtered_cloud;
 }
 
 Eigen::Vector3f RadarOdometry::FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud) {

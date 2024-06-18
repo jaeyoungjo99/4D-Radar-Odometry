@@ -57,6 +57,7 @@
 
 // Message header
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
 #include <jsk_recognition_msgs/BoundingBox.h>
@@ -110,21 +111,23 @@ class RadarOdometry : public AtomTask {
         void ProcessINI();
 
     private:
-        inline void CallbackMainPointCloud(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+        inline void CallbackPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
-            i_main_point_cloud_ = *msg;
+            i_point_cloud2_ = *msg;
             if(cfg_str_sensor_type_ == "lidar"){
-                pcl::moveFromROSMsg(i_main_point_cloud_, *i_main_lidar_ptr_);
+                pcl::moveFromROSMsg(i_point_cloud2_, *i_main_lidar_ptr_);
 
-                i_main_lidar_raw_tuple_ = std::make_tuple(i_main_lidar_ptr_, i_main_point_cloud_.header.frame_id, i_main_point_cloud_.header.stamp);
+                i_main_lidar_raw_tuple_ = std::make_tuple(i_main_lidar_ptr_, i_point_cloud2_.header.frame_id, i_point_cloud2_.header.stamp);
                 
-                i_lidar_struct_.timestamp = i_main_point_cloud_.header.stamp.toSec();
+                i_lidar_struct_.timestamp = i_point_cloud2_.header.stamp.toSec();
                 i_lidar_struct_.points = i_main_lidar_ptr_;
-                i_lidar_struct_.frame_id = i_main_point_cloud_.header.frame_id;
+                i_lidar_struct_.frame_id = i_point_cloud2_.header.frame_id;
+
+                b_is_new_point_cloud_ = true;
             }
 
-            if(cfg_str_sensor_type_ == "radar"){
-                pcl::moveFromROSMsg(i_main_point_cloud_, *temp_radar_ptr_);
+            if(cfg_str_sensor_type_ == "bitsensing"){
+                pcl::moveFromROSMsg(i_point_cloud2_, *temp_radar_ptr_);
                 i_main_radar_ptr_->points.clear();
 
                 int i_point_num = temp_radar_ptr_->points.size();
@@ -137,15 +140,64 @@ class RadarOdometry : public AtomTask {
                     }
                 }
 
-                i_main_radar_raw_tuple_ = std::make_tuple(i_main_radar_ptr_, i_main_point_cloud_.header.frame_id, i_main_point_cloud_.header.stamp);
+                i_main_radar_raw_tuple_ = std::make_tuple(i_main_radar_ptr_, i_point_cloud2_.header.frame_id, i_point_cloud2_.header.stamp);
                 
-                i_radar_struct_.timestamp = i_main_point_cloud_.header.stamp.toSec();
+                i_radar_struct_.timestamp = i_point_cloud2_.header.stamp.toSec();
                 i_radar_struct_.points = i_main_radar_ptr_;
-                i_radar_struct_.frame_id = i_main_point_cloud_.header.frame_id;
+                i_radar_struct_.frame_id = i_point_cloud2_.header.frame_id;
+
+                b_is_new_point_cloud_ = true;
             }
 
-            b_is_new_point_cloud_ = true;
+            
 
+        }
+
+        inline void CallbackPointCloud(const sensor_msgs::PointCloud::ConstPtr& msg){
+            std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
+            if (cfg_str_sensor_type_ == "ntu") {
+                // sensor_msgs::PointCloud를 PCL 포인트 클라우드로 변환
+                i_main_radar_ptr_->points.clear();
+
+                float f_p_dist;
+                for (size_t i = 0; i < msg->points.size(); ++i) {
+                    PointXYZPRVAE pcl_point;
+                    pcl_point.x = msg->points[i].x;
+                    pcl_point.y = msg->points[i].y;
+                    pcl_point.z = msg->points[i].z;
+                    
+                    // 포인트의 Alpha, Beta, Doppler, Power, Range 정보를 채우기 위해 채널 데이터 검색
+                    for (size_t j = 0; j < msg->channels.size(); ++j) {
+                        const auto& channel = msg->channels[j];
+                        if (channel.name == "Alpha") {
+                            pcl_point.azi_angle = channel.values[i] * (-1.0);
+                        } else if (channel.name == "Beta") {
+                            pcl_point.ele_angle = channel.values[i] * (-1.0);
+                        } else if (channel.name == "Doppler") {
+                            pcl_point.vel = channel.values[i];
+                        } else if (channel.name == "Power") {
+                            pcl_point.power = channel.values[i];
+                        } else if (channel.name == "Range") {
+                            pcl_point.range = channel.values[i];
+                        }
+                    }
+                    f_p_dist = sqrt(pcl_point.x * pcl_point.x + pcl_point.y * pcl_point.y + pcl_point.z * pcl_point.z);
+                    if (f_p_dist < cfg_d_max_distance_m_) {
+                        i_main_radar_ptr_->points.push_back(pcl_point);
+                    }
+
+                }
+
+                int i_point_num = temp_radar_ptr_->points.size();
+
+                i_radar_struct_.timestamp = msg->header.stamp.toSec();
+                i_radar_struct_.points = i_main_radar_ptr_;
+                i_radar_struct_.frame_id = msg->header.frame_id;
+
+                b_is_new_point_cloud_ = true;
+            }
+
+            
         }
 
         inline void CallbackCAN(const geometry_msgs::TwistStampedConstPtr& msg){
@@ -167,6 +219,8 @@ class RadarOdometry : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
+        pcl::PointCloud<PointXYZPRVAE>::Ptr CvFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const Eigen::Matrix4f mat_prediction);
+
         Eigen::Vector3f FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
         Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
         Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices);
@@ -181,7 +235,8 @@ class RadarOdometry : public AtomTask {
 
         IniParser v_ini_parser_;
 
-        ros::Subscriber s_main_point_cloud_;
+        ros::Subscriber s_point_cloud_;
+        ros::Subscriber s_point_cloud2_;
         ros::Subscriber s_can_;
         ros::Subscriber s_imu_;
 
@@ -191,7 +246,8 @@ class RadarOdometry : public AtomTask {
         ros::Publisher p_odom_;
 
         // input
-        sensor_msgs::PointCloud2 i_main_point_cloud_;
+        sensor_msgs::PointCloud2 i_point_cloud2_;
+        sensor_msgs::PointCloud i_point_cloud_;
 
         // output
         sensor_msgs::PointCloud2 o_vel_comp_radar_cloud_;
@@ -221,13 +277,15 @@ class RadarOdometry : public AtomTask {
 
         double d_last_radar_time_sec_;
         Eigen::Matrix4f radar_pose_;
+        Eigen::Matrix4f last_radar_pose_;
         Eigen::Matrix4f radar_calib_pose_;
 
         pcl::PointCloud<PointXYZPRVAE>::Ptr static_radar_ptr_;
 
         // Configure
         std::string cfg_str_sensor_type_;
-        std::string cfg_str_sensor_topic_;
+        std::string cfg_str_sensor_topic_pc1_;
+        std::string cfg_str_sensor_topic_pc2_;
         std::string cfg_str_can_topic_;
         std::string cfg_str_imu_topic_;
 

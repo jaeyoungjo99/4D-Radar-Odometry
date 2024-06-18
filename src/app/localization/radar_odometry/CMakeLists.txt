@@ -56,6 +56,17 @@ include_directories(
   ../../../interface
 )
 
+# # Define an option to enable or disable TBB
+# option(USE_TBB "Enable TBB support" OFF)
+
+# if(USE_TBB)
+#   # find_package(TBB REQUIRED)
+#   add_definitions(-DUSE_TBB)
+#   # include_directories(${TBB_INCLUDE_DIRS})
+#   # link_directories(${TBB_LIBRARY_DIRS})
+#   # set(TBB_LIBS ${TBB_LIBRARIES})
+# endif()
+
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
 #   src/${PROJECT_NAME}/trajectory.cpp
