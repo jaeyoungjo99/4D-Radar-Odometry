@@ -6,7 +6,7 @@
 // Version: 0.1
 //
 // Revision History
-//      April 2, 2024: Jaeyoung Jo - Created.
+//      June 19, 2024: Jaeyoung Jo - Created.
 //      XXXX XX, 2023: XXXXXXX XX - 
 /****************************************************************************/
 
@@ -69,7 +69,9 @@
 #include <nav_msgs/Odometry.h>
 
 #include <tf/tf.h>
-#include "point_type.hpp"
+#include "types/point_type.hpp"
+
+#include "radar_odometry.hpp"
 
 // Namespace
 using namespace ros;
@@ -96,12 +98,12 @@ typedef struct{
     double yaw_rate_rad;
 } CanStruct;
 
-class RadarOdometry : public AtomTask {
+class RadarOdometryNode : public AtomTask {
     public:
         // Constructor
-        explicit RadarOdometry(int id, std::string task_node, double period);
+        explicit RadarOdometryNode(int id, std::string task_node, double period);
         // Destructor
-        virtual ~RadarOdometry();
+        virtual ~RadarOdometryNode();
         
     public:
         void Init();
@@ -219,15 +221,7 @@ class RadarOdometry : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
-        pcl::PointCloud<PointXYZPRVAE>::Ptr CvFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const Eigen::Matrix4f mat_prediction);
-
-        Eigen::Vector3f FitQuadratic(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
-        Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
-        Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices);
-        pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, float margin, int max_iterations);
-
         double GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct);
-        void EstimateEgoMotion(RadarDataStruct i_radar_struct, CanStruct & o_can_struct);
 
     private:
         mutex mutex_main_point_cloud_;
@@ -289,11 +283,16 @@ class RadarOdometry : public AtomTask {
         std::string cfg_str_can_topic_;
         std::string cfg_str_imu_topic_;
 
+        int cfg_i_odometry_type_;
+
         double cfg_d_ego_to_radar_x_m_;
         double cfg_d_ego_to_radar_yaw_deg_;
         double cfg_d_radar_delay_sec_; 
 
         double cfg_d_max_distance_m_;
+
+        radar_odometry::pipeline::RadarOdometry odometry_;
+        radar_odometry::pipeline::RadarOdometryConfig config_;
         
         
 };

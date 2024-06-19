@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(radar_odometry)
+project(radar_odometry_ros)
 
 ## Compile as C++14, supported in ROS Kinetic and newer
 add_compile_options(-std=c++14)
@@ -69,7 +69,9 @@ include_directories(
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/trajectory.cpp
+#   src/radar_odometry.cpp
+#   src/algorithm/ego_motion_compensation.cpp
+#   src/algorithm/registration.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -82,6 +84,10 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME} 
     src/radar_odometry_node.cpp
+    src/radar_odometry.cpp
+    src/algorithm/adaptive_threshold.cpp
+    src/algorithm/ego_motion_compensation.cpp
+    src/algorithm/registration.cpp
 )
 
 ## Rename C++ executable without prefix

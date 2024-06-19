@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>radar_odometry</name>
+  <name>radar_odometry_ros</name>
   <version>0.0.0</version>
-  <description>The radar_odometry package</description>
+  <description>The radar_odometry_ros package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->

@@ -1,0 +1,5 @@
+<!-- -->
+<launch>
+  <rosparam file="config/system.yaml" command="load"/>   
+  <node pkg="radar_odometry_ros" type="radar_odometry_ros" name="radar_odometry_ros" output="screen" respawn="true"/>
+</launch>

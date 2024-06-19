@@ -20,7 +20,8 @@
                 "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pcl/include/**",
                 "/home/jaeyoung/git/4D-Radar-Odometry/src/bsw/velodyne/velodyne_pointcloud/include/**",
                 "/usr/include/**",
-                "${workspaceFolder}/src/app/utils/autoku_utils/include"
+                "${workspaceFolder}/src/app/utils/autoku_utils/include",
+                "${workspaceFolder}/src/app/localization/radar_odometry_ros/include"
             ],
             "name": "ROS",
             "intelliSenseMode": "gcc-x64",
