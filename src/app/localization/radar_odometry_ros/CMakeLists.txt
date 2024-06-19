@@ -88,6 +88,7 @@ add_executable(${PROJECT_NAME}
     src/algorithm/adaptive_threshold.cpp
     src/algorithm/ego_motion_compensation.cpp
     src/algorithm/registration.cpp
+    src/algorithm/voxel_hash_map.cpp
 )
 
 ## Rename C++ executable without prefix

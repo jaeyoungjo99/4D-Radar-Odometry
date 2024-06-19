@@ -7,6 +7,45 @@ namespace{
 
 namespace radar_odometry {
 
+pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, 
+                                                const Eigen::Matrix4f &predicted_vel,
+                                                float margin)
+{
+    pcl::PointCloud<PointXYZPRVAE>::Ptr inliers(new pcl::PointCloud<PointXYZPRVAE>);
+    std::vector<int> current_inliers;
+
+    Eigen::Vector3f linear_vel = predicted_vel.block<3,1>(0, 3);
+    Eigen::Matrix3f angular_vel = predicted_vel.block<3,3>(0, 0);
+
+    double radar_v_x = linear_vel(0);
+    double radar_v_y = linear_vel(1);
+    double radar_v_z = linear_vel(2);
+
+    std::cout<<"radar_v_x: "<<radar_v_x <<" radar_v_y: "<<radar_v_y<<std::endl;
+
+
+    for (size_t i = 0; i < cloud->points.size(); ++i) {
+
+        float point_azim_rad = cloud->points[i].azi_angle * M_PI / 180.0f;
+        float point_vel = -cloud->points[i].vel;
+        // double est_radial_vel = radar_v_x * cos(point_azim_rad) + radar_v_y * sin(point_azim_rad)
+        //                         + radar_v_x * sin(point_azim_rad) - radar_v_y * cos(point_azim_rad);
+        double est_radial_vel = radar_v_x * cos(point_azim_rad);
+
+        // float predicted_y = coeffs[0] * cos(x) + coeffs[1] * sin(x);
+
+        if (std::abs(est_radial_vel - point_vel) <= margin) {
+            current_inliers.push_back(i);
+        }
+    }
+
+    for (int idx : current_inliers) {
+        inliers->points.push_back(cloud->points[idx]);
+    }
+
+    return inliers;
+}
+
 Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
 {
     Eigen::MatrixXf A(cloud->points.size(), 2);

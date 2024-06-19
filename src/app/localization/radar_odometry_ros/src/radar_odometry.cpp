@@ -24,7 +24,7 @@ bool RadarOdometry::RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_r
     }
     d_last_radar_time_sec_ = i_radar_timestamp_sec;
 
-    
+    std::cout<<"d_delta_radar_time_sec: "<<d_delta_radar_time_sec<<std::endl;
 
     Eigen::Matrix4f new_pose = Eigen::Matrix4f::Identity();
     
@@ -36,12 +36,29 @@ bool RadarOdometry::RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_r
     Eigen::Matrix4f initial_guess = last_pose * prediction;
 
     if(config_.odometry_type == OdometryType::EGOMOTION){
+
+        std::cout<<"Origin Point Num: "<<i_radar_points->points.size()<<std::endl;
         
         // 1. Points Preprocessing based on CV model
+        pcl::PointCloud<PointXYZPRVAE>::Ptr vel_filtered_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
+        Eigen::Matrix4f predicted_vel;// = !poses_.empty() ? prediction / (i_radar_timestamp_sec - times_.back()) : Eigen::Matrix4f::Identity(); 
+
+        if(poses_.size() < 2){ // Prediction is not completed
+            predicted_vel = Eigen::Matrix4f::Identity();
+            *vel_filtered_radar_ptr = *i_radar_points;
+        }
+        else{
+            predicted_vel = prediction / (i_radar_timestamp_sec - times_.back());
+            vel_filtered_radar_ptr = VelFiltering(i_radar_points, predicted_vel, 5);
+        }
+
+        std::cout<<"Vel Filtered Point Num: "<<vel_filtered_radar_ptr->points.size()<<std::endl;
 
         // 2. RANSAC Outlier Removal
         pcl::PointCloud<PointXYZPRVAE>::Ptr ransac_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
-        ransac_radar_ptr = RansacFit(i_radar_points, 1, 100);
+        ransac_radar_ptr = RansacFit(vel_filtered_radar_ptr, 1, 100);
+
+        std::cout<<"Ransac Filtered Point Num: "<<ransac_radar_ptr->points.size()<<std::endl;
 
         // 3. LSQ Fitting
         Eigen::Vector2f est_vel = FitSine(ransac_radar_ptr);
