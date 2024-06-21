@@ -29,7 +29,7 @@ struct ResultTuple {
     Eigen::Vector6d JTr;
 };
 
-constexpr int MAX_NUM_ITERATIONS_ = 20;
+constexpr int MAX_NUM_ITERATIONS_ = 100;
 constexpr double ESTIMATION_THRESHOLD_ = 0.001;
 
 
@@ -413,7 +413,7 @@ bool LMOptimization(const std::vector<Eigen::Vector3d> &source_origin,
     Eigen::MatrixXf matAt = matA.transpose();
     Eigen::MatrixXf matAtAdiag = (matAt * matA).diagonal().asDiagonal();
 
-    matAtA = matAt * matA + 10.0 * matAtAdiag;
+    matAtA = matAt * matA + 1.0 * matAtAdiag;
     matAtB = matAt * matB;
 
     matX = matAtA.colPivHouseholderQr().solve(matAtB);
@@ -602,6 +602,90 @@ Eigen::Matrix4d RegisterScan2Scan3DoF2(const std::vector<RadarPoint> i_cur_point
     std::cout<<"Del  x: "<< transformTobeMapped[3] - init_transformTobeMapped[3]
              <<" y: "<<transformTobeMapped[4] - init_transformTobeMapped[4]
              <<" yaw deg: "<<(transformTobeMapped[2] - init_transformTobeMapped[2]) *180/M_PI <<std::endl;
+
+    
+
+
+    return T_icp;
+}
+
+Eigen::Matrix4d RegisterScan2Map(const std::vector<RadarPoint> &frame,
+                                    const VoxelHashMap &voxel_map,
+                                    const  Eigen::Matrix4d &initial_guess,
+                                    double max_correspondence_distance,
+                                    double kernel) 
+{   
+    if (voxel_map.Empty()) return initial_guess;
+
+    std::vector<RadarPoint> cur_origin_points = frame;
+    std::vector<RadarPoint> cur_moved_points;
+    std::vector<RadarPoint> last_glob_points = voxel_map.Pointcloud();
+
+    
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr target_xyzin_ptr(new pcl::PointCloud<pcl::PointXYZINormal>);
+
+    int i_source_point_num = frame.size();
+    int i_target_point_num = last_glob_points.size();
+
+    std::cout<<"i_source_point_num: "<<i_source_point_num<<std::endl;
+    std::cout<<"i_target_point_num: "<<i_target_point_num<<std::endl;
+
+
+    for(int i = 0; i < i_target_point_num; ++i){
+        pcl::PointXYZINormal point;
+        point.x = last_glob_points[i].pose.x();
+        point.y = last_glob_points[i].pose.y();
+        point.z = last_glob_points[i].pose.z();
+
+        target_xyzin_ptr->points.push_back(point);
+
+    }
+
+    kdtree_.setInputCloud(target_xyzin_ptr);
+
+    // 초기 위치 지정
+    DecomposeTransform(initial_guess, transformTobeMapped);
+
+    float init_transformTobeMapped[6] = {0};
+    for(int i = 0; i < 6; i++){
+        init_transformTobeMapped[i] = transformTobeMapped[i];
+    }
+
+    std::cout<<"Init x: "<< init_transformTobeMapped[3] <<" y: "<<init_transformTobeMapped[4] <<" yaw deg: "<<init_transformTobeMapped[2]*180/M_PI<<std::endl;
+
+    Eigen::Matrix4d T_icp = initial_guess;
+
+    int iter_count = 0;
+    for(int j = 0; j < MAX_NUM_ITERATIONS_; ++j){
+        iter_count++;
+        // cur_origin_points to Source_glob transform
+        TransformPoints(T_icp, cur_origin_points, cur_moved_points);
+
+        // Correspondence 형성
+        auto [source_origin, source_glob, target_glob] = GetCorrespondencesOrigin(cur_origin_points, cur_moved_points, max_correspondence_distance);
+
+        if(source_origin.size() < 10 ){
+            std::cout<<"Too Small # association: "<< source_origin.size() << std::endl;
+            break;
+        }
+
+        // LM Optimization 수행
+        if(LMOptimization(source_origin, source_glob, target_glob, kernel) == true){
+            ComposeTransform(transformTobeMapped, T_icp);
+            break;
+        }
+
+        // std::cout<<" After Ticp x: "<< transformTobeMapped[3] <<" y: "<<transformTobeMapped[4] <<" yaw: "<<transformTobeMapped[2]<<std::endl;
+        
+        //
+        ComposeTransform(transformTobeMapped, T_icp);
+        // T_icp =  estimation * T_icp;
+    }
+    
+
+    std::cout<<"Del  x: "<< transformTobeMapped[3] - init_transformTobeMapped[3]
+             <<" y: "<<transformTobeMapped[4] - init_transformTobeMapped[4]
+             <<" yaw deg: "<<(transformTobeMapped[2] - init_transformTobeMapped[2]) *180/M_PI <<" iter: "<< iter_count <<std::endl;
 
     
 

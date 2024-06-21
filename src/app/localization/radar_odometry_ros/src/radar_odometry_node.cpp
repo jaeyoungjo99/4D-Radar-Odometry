@@ -117,7 +117,7 @@ void RadarOdometryNode::Publish()
     // o_cur_radar_global_cloud_.header.stamp = ros::Time::now();
     // o_cur_radar_global_cloud_.header.frame_id = "world";
 
-    // p_cur_radar_global_cloud_.publish(o_cur_radar_global_cloud_);
+    p_cur_radar_global_cloud_.publish(o_cur_radar_global_cloud_);
 
     //
     p_radar_vel_heading_marker_array_.publish(o_radar_vel_heading_markers_);
@@ -212,6 +212,9 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "max_points_per_voxel", config_.max_points_per_voxel) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_points_per_voxel");
         }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "local_map_time_th", config_.local_map_time_th) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/local_map_time_th");
+        }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "min_motion_th", config_.min_motion_th) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/min_motion_th");
         }
@@ -229,7 +232,8 @@ void RadarOdometryNode::ProcessINI()
 
 
 void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
-{
+{   
+    std::chrono::system_clock::time_point run_radar_odometry_start_time = std::chrono::system_clock::now();
     int i_point_cloud_num = i_radar_struct.points.size();
     ROS_INFO_STREAM("RadarOdometryNode: Input radar points num: " << i_point_cloud_num);
 
@@ -238,35 +242,20 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
     const auto &[frame, keypoints] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
     radar_pose_ = odometry_.poses().back();
 
+    std::chrono::duration<double>run_radar_odometry_time_sec = std::chrono::system_clock::now() - run_radar_odometry_start_time;
 
+    ROS_INFO_STREAM("RadarOdometryNode: Total Time sec:  " << run_radar_odometry_time_sec.count());
 
     auto frame_header = i_point_cloud2_.header;
     frame_header.frame_id = "afi910";
     o_vel_comp_radar_cloud_ = *EigenToPointCloud2(frame, frame_header);
 
-    // o_cur_radar_global_cloud_ = *EigenToPointCloud2(frame, frame_header);
+    auto local_map_header = i_point_cloud2_.header;
+    local_map_header.frame_id = "world";
+    o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.LocalMap(), local_map_header);
 
 }
 
-double RadarOdometryNode::GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct)
-{
-    // Currently Only cal linear vel
-
-    double point_angle_rad = i_radar_point.azi_angle * M_PI/180.0f;
-
-    double radar_v_lat_can = cfg_d_ego_to_radar_x_m_ * i_can_struct.yaw_rate_rad;
-    double radar_v_lon_can = i_can_struct.vel_mps;
-    double radar_v_total_can = sqrt(radar_v_lat_can*radar_v_lat_can + radar_v_lon_can*radar_v_lon_can);
-
-    double radar_alpha_angle_can_rad = atan2(radar_v_lat_can, radar_v_lon_can);
-    double comp_vel = radar_v_total_can * cos(radar_alpha_angle_can_rad - point_angle_rad);
-
-    // double o_comp_vel_ms = i_radar_point.vel/cos(point_angle_rad) + radar_v_lon;
-
-    double o_comp_vel_ms = i_radar_point.vel + comp_vel;
-
-    return o_comp_vel_ms;
-}
 
 int main(int argc, char** argv) {
     std::string node_name = "radar_odometry_ros";

@@ -187,8 +187,6 @@ class RadarOdometryNode : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
-        double GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct);
-
     private:
         mutex mutex_main_point_cloud_;
         mutex mutex_can_;

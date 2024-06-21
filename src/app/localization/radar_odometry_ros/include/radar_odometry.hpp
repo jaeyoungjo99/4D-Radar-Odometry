@@ -17,6 +17,7 @@
 #include <Eigen/Core>
 #include <utility>
 #include <vector>
+#include <chrono>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -37,6 +38,8 @@
 
 #include "algorithm/adaptive_threshold.hpp"
 #include "algorithm/ego_motion_compensation.hpp"
+#include "algorithm/preprocessing.hpp"
+#include "algorithm/voxel_hash_map.hpp"
 #include "algorithm/registration.hpp"
 
 namespace radar_odometry::pipeline {
@@ -58,6 +61,8 @@ struct RadarOdometryConfig{
     double min_range = 5.0;
     int max_points_per_voxel = 20;
 
+    double local_map_time_th = 1.0;
+
     double min_motion_th = 0.1;
     double initial_threshold = 2.0; // p2p search distance
 
@@ -71,13 +76,13 @@ public:
 public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
+        local_map_(config.voxel_size, config.max_range, config.max_points_per_voxel, config.local_map_time_th),
         adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
 
 public:
-    // std::tuple<pcl::PointCloud<PointXYZPRVAE>::Ptr, Vector3dVector>
     RadarPointVectorTuple RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec);
     Eigen::Matrix4d GetPredictionModel() const;
     Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
@@ -86,16 +91,17 @@ public:
     bool HasMoved();
 
 public:
+    std::vector<RadarPoint> LocalMap() const { return local_map_.Pointcloud(); };
     std::vector<Eigen::Matrix4d> poses() const {return poses_;};
 
 private:
     std::vector<Eigen::Matrix4d> poses_;
     std::vector<double> times_;
     RadarOdometryConfig config_;
+    VoxelHashMap local_map_;
     AdaptiveThreshold adaptive_threshold_;
 
     double d_last_radar_time_sec_;
-    // pcl::PointCloud<PointXYZPRVAE>::Ptr last_radar_ptr;
     std::vector<RadarPoint> last_radar_ptr;
 };
 

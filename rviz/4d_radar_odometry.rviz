@@ -8,10 +8,8 @@ Panels:
         - /Status1
         - /TF1
         - /TF1/Status1
-        - /Vel Comp Radar1
         - /Vel Comp Radar1/Status1
         - /Radar Heading1/Namespaces1
-        - /Global radar points1
         - /Global radar points1/Autocompute Value Bounds1
         - /Image1
         - /Odometry1
@@ -318,6 +316,34 @@ Visualization Manager:
       Transport Hint: compressed
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 12.22769546508789
+        Min Value: -1.2565674781799316
+        Value: true
+      Axis: Z
+      Channel Name: vel
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: AxisColor
+      Decay Time: 20
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: Vel Comp Radar
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 1
+      Size (m): 0.009999999776482582
+      Style: Points
+      Topic: /vel_comp_radar_cloud
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -345,7 +371,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
+      Angle: -0.17500022053718567
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -355,10 +381,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 7.599999904632568
+      Scale: 2.765451192855835
       Target Frame: afi910
-      X: 0.40970396995544434
-      Y: 0.32580623030662537
+      X: 7.2619709968566895
+      Y: 1.0509612560272217
     Saved: ~
 Window Geometry:
   Displays:

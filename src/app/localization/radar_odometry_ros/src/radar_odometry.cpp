@@ -7,6 +7,8 @@
 
 #include "algorithm/adaptive_threshold.hpp"
 #include "algorithm/ego_motion_compensation.hpp"
+#include "algorithm/preprocessing.hpp"
+#include "algorithm/voxel_hash_map.hpp"
 #include "algorithm/registration.hpp"
 
 namespace radar_odometry::pipeline {
@@ -15,6 +17,8 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 {
     RadarPointVector ransac_radar_points;
     RadarPointVector vel_filtered_radar_points;
+
+    const auto &cropped_frame = Preprocess(i_radar_points, config_.max_range, config_.min_range);
 
     // 0. Delta time calculation    
     double d_delta_radar_time_sec = !times_.empty() ? i_radar_timestamp_sec - times_.back() : 0.0;
@@ -31,10 +35,9 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
     std::cout<<"Prediction Norm: "<< prediction.block<3,1>(0,3).norm() <<std::endl;
 
     if(config_.odometry_type == OdometryType::EGOMOTION || config_.odometry_type == OdometryType::EGOMOTIONICP){
+        std::chrono::system_clock::time_point ego_motion_estimation_start_time_sec = std::chrono::system_clock::now();
 
-        std::cout<<"Origin Point Num: "<<i_radar_points.size()<<std::endl;
-        
-
+        std::cout<<"Origin Point Num: "<<cropped_frame.size()<<std::endl;
 
         // 1. Points Preprocessing based on CV model
 
@@ -42,15 +45,15 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
         if(poses_.size() < 2){ // Prediction is not completed
             predicted_vel = Eigen::Matrix4d::Identity();
-            vel_filtered_radar_points = i_radar_points;
+            vel_filtered_radar_points = cropped_frame;
         }
         else{
             predicted_vel = prediction / (i_radar_timestamp_sec - times_.back());
-            vel_filtered_radar_points = VelFiltering(i_radar_points, predicted_vel, config_.doppler_vel_margin);
+            vel_filtered_radar_points = VelFiltering(cropped_frame, predicted_vel, config_.doppler_vel_margin);
 
             if(vel_filtered_radar_points.size() < 30){
                 std::cout<<"Vel Filtering Fail! use origin"<<std::endl;
-                vel_filtered_radar_points = i_radar_points;
+                vel_filtered_radar_points = cropped_frame;
             }
         }
 
@@ -61,17 +64,32 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         ransac_radar_points = RansacFit(vel_filtered_radar_points, 1, 100); // margin, max_iter
 
         std::cout<<"Ransac Filtered Point Num: "<<ransac_radar_points.size()<<std::endl;
+        
 
         // 3. LSQ Fitting
-        Eigen::Vector2d est_vel = FitSine(ransac_radar_points);
+        Eigen::Vector2d est_coeff;
+        double d_est_azim, d_est_vel;
+        double radar_dx, radar_dy, radar_dyaw;
+        if(ransac_radar_points.size() > 10){
+            est_coeff = FitSine(ransac_radar_points);
+            d_est_azim = atan2(est_coeff[1], est_coeff[0]);
+            d_est_vel = sqrt(est_coeff[0]*est_coeff[0] + est_coeff[1]*est_coeff[1]);
 
-        double d_est_azim = atan2(est_vel[1], est_vel[0]);
-        double d_est_vel = sqrt(est_vel[0]*est_vel[0] + est_vel[1]*est_vel[1]);
+            // Radar pose DR with Radar
+            radar_dx = d_delta_radar_time_sec * d_est_vel * cos(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0);
+            radar_dy = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0);
+            radar_dyaw = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0) / config_.ego_to_radar_x_m;
 
-        // Radar pose DR with Radar
-        double radar_dx = d_delta_radar_time_sec * d_est_vel * cos(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0);
-        double radar_dy = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0);
-        double radar_dyaw = d_delta_radar_time_sec * d_est_vel * sin(d_est_azim + config_.ego_to_radar_yaw_deg * M_PI/180.0) / config_.ego_to_radar_x_m;
+        }
+        else{
+            Eigen::Vector3d linear = prediction.block<3,1>(0, 3);
+            Eigen::Matrix3d angular = prediction.block<3,3>(0, 0);
+
+            radar_dx = linear(0);
+            radar_dy = linear(1);
+            radar_dyaw = std::atan2(angular(1, 0), angular(0, 0));
+        }
+
 
         Eigen::Matrix4d delta_pose = Eigen::Matrix4d::Identity();
 
@@ -88,7 +106,11 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         
         std::cout<<"Est radar_dx: "<<radar_dx <<" dy: "<<radar_dy<< " dyaw deg: "<<radar_dyaw*180/M_PI<<std::endl;
 
+        std::chrono::duration<double> ego_motion_estimation_time_sec = std::chrono::system_clock::now() - ego_motion_estimation_start_time_sec;
+        std::cout<<"Ego motion Time sec: " << ego_motion_estimation_time_sec.count() << std::endl;
+
         if(!poses_.empty() && config_.odometry_type == OdometryType::EGOMOTIONICP){
+            std::chrono::system_clock::time_point registration_start_time_sec = std::chrono::system_clock::now();
 
             // const double sigma = GetAdaptiveThreshold(); // Keep estimated model error
             double sigma = GetAdaptiveThreshold(); // Keep estimated model error
@@ -100,9 +122,17 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
             if(sigma > 1.0) sigma = 1.0;
 
-            new_pose = RegisterScan2Scan3DoF2(ransac_radar_points, last_radar_ptr, 
-                                            last_pose * delta_pose, last_pose, 
-                                            3.0 * sigma, sigma / 3.0);            
+            // new_pose = RegisterScan2Scan3DoF2(ransac_radar_points, last_radar_ptr, 
+            //                                 last_pose * delta_pose, last_pose, 
+            //                                 3.0 * sigma, sigma / 3.0);    
+
+            new_pose = RegisterScan2Map(cropped_frame, 
+                                        local_map_,
+                                        last_pose * delta_pose, 
+                                        3.0 * sigma, sigma / 3.0); 
+
+            std::chrono::duration<double>registration_time_sec = std::chrono::system_clock::now() - registration_start_time_sec;
+            std::cout<<"Registration Time sec: " << registration_time_sec.count() << std::endl;
         }
         last_radar_ptr = ransac_radar_points;
 
@@ -115,6 +145,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
     // End
     poses_.push_back(new_pose);
+    local_map_.Update(cropped_frame, new_pose);
     times_.push_back(i_radar_timestamp_sec);
 
     Eigen::Matrix4d model_deviation = initial_guess.inverse() * new_pose;

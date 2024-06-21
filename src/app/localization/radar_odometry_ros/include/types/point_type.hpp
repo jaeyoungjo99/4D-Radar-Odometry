@@ -169,6 +169,8 @@ inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::Point
     sensor_msgs::PointCloud2ConstIterator<float> msg_vel(*msg, "vel");
     sensor_msgs::PointCloud2ConstIterator<float> msg_azi_angle(*msg, "azi_angle");
     sensor_msgs::PointCloud2ConstIterator<float> msg_ele_angle(*msg, "ele_angle");
+
+    double time_stamp = msg->header.stamp.toSec();
     for (size_t i = 0; i < msg->height * msg->width; ++i, ++msg_x, ++msg_y, ++msg_z, 
             ++msg_power, ++msg_range, ++msg_vel, ++msg_azi_angle, ++msg_ele_angle) {
 
@@ -180,7 +182,8 @@ inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::Point
         iter_point.vel = *msg_vel;
         iter_point.azi_angle = *msg_azi_angle;
         iter_point.ele_angle = *msg_ele_angle;
-
+        iter_point.timestamp = time_stamp;
+        
         points.emplace_back(iter_point);
     }
     return points;
