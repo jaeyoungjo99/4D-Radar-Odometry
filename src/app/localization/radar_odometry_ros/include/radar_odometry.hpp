@@ -66,18 +66,19 @@ struct RadarOdometryConfig{
 
 class RadarOdometry{
 public:
-    using PointXYZPRVAETuple = std::tuple<pcl::PointCloud<PointXYZPRVAE>, pcl::PointCloud<PointXYZPRVAE>>;
+    using RadarPointVector = std::vector<RadarPoint>;
+    using RadarPointVectorTuple = std::tuple<std::vector<RadarPoint>, std::vector<RadarPoint>>;
 public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
         adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range)
-        {last_radar_ptr.reset(new pcl::PointCloud<PointXYZPRVAE>());}
+        {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
 
 public:
     // std::tuple<pcl::PointCloud<PointXYZPRVAE>::Ptr, Vector3dVector>
-    PointXYZPRVAETuple RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_radar_points, const double i_radar_timestamp_sec);
+    RadarPointVectorTuple RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec);
     Eigen::Matrix4d GetPredictionModel() const;
     Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
     
@@ -94,7 +95,8 @@ private:
     AdaptiveThreshold adaptive_threshold_;
 
     double d_last_radar_time_sec_;
-    pcl::PointCloud<PointXYZPRVAE>::Ptr last_radar_ptr;
+    // pcl::PointCloud<PointXYZPRVAE>::Ptr last_radar_ptr;
+    std::vector<RadarPoint> last_radar_ptr;
 };
 
 }

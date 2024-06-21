@@ -17,6 +17,7 @@
 #include <Eigen/Core>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -36,8 +37,10 @@
 #include "types/point_type.hpp"
 
 namespace radar_odometry {
+struct VoxelHashMap{
+    
 
-
+};
 }
 
 #endif  // __VOXEL_HASH_MAP_HPP__

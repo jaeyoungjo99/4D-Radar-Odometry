@@ -11,10 +11,10 @@
 
 namespace radar_odometry::pipeline {
 
-RadarOdometry::PointXYZPRVAETuple RadarOdometry::RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_radar_points, const double i_radar_timestamp_sec)
+RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec)
 {
-    pcl::PointCloud<PointXYZPRVAE>::Ptr ransac_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
-    pcl::PointCloud<PointXYZPRVAE>::Ptr vel_filtered_radar_ptr(new pcl::PointCloud<PointXYZPRVAE>);
+    RadarPointVector ransac_radar_points;
+    RadarPointVector vel_filtered_radar_points;
 
     // 0. Delta time calculation    
     double d_delta_radar_time_sec = !times_.empty() ? i_radar_timestamp_sec - times_.back() : 0.0;
@@ -32,7 +32,7 @@ RadarOdometry::PointXYZPRVAETuple RadarOdometry::RegisterPoints(const pcl::Point
 
     if(config_.odometry_type == OdometryType::EGOMOTION || config_.odometry_type == OdometryType::EGOMOTIONICP){
 
-        std::cout<<"Origin Point Num: "<<i_radar_points->points.size()<<std::endl;
+        std::cout<<"Origin Point Num: "<<i_radar_points.size()<<std::endl;
         
 
 
@@ -42,28 +42,28 @@ RadarOdometry::PointXYZPRVAETuple RadarOdometry::RegisterPoints(const pcl::Point
 
         if(poses_.size() < 2){ // Prediction is not completed
             predicted_vel = Eigen::Matrix4d::Identity();
-            *vel_filtered_radar_ptr = *i_radar_points;
+            vel_filtered_radar_points = i_radar_points;
         }
         else{
             predicted_vel = prediction / (i_radar_timestamp_sec - times_.back());
-            vel_filtered_radar_ptr = VelFiltering(i_radar_points, predicted_vel, config_.doppler_vel_margin);
+            vel_filtered_radar_points = VelFiltering(i_radar_points, predicted_vel, config_.doppler_vel_margin);
 
-            if(vel_filtered_radar_ptr->points.size() < 30){
+            if(vel_filtered_radar_points.size() < 30){
                 std::cout<<"Vel Filtering Fail! use origin"<<std::endl;
-                *vel_filtered_radar_ptr = *i_radar_points;
+                vel_filtered_radar_points = i_radar_points;
             }
         }
 
-        std::cout<<"Vel Filtered Point Num: "<<vel_filtered_radar_ptr->points.size()<<std::endl;
+        std::cout<<"Vel Filtered Point Num: "<<vel_filtered_radar_points.size()<<std::endl;
 
         // 2. RANSAC Outlier Removal
         
-        ransac_radar_ptr = RansacFit(vel_filtered_radar_ptr, 1, 100); // margin, max_iter
+        ransac_radar_points = RansacFit(vel_filtered_radar_points, 1, 100); // margin, max_iter
 
-        std::cout<<"Ransac Filtered Point Num: "<<ransac_radar_ptr->points.size()<<std::endl;
+        std::cout<<"Ransac Filtered Point Num: "<<ransac_radar_points.size()<<std::endl;
 
         // 3. LSQ Fitting
-        Eigen::Vector2d est_vel = FitSine(ransac_radar_ptr);
+        Eigen::Vector2d est_vel = FitSine(ransac_radar_points);
 
         double d_est_azim = atan2(est_vel[1], est_vel[0]);
         double d_est_vel = sqrt(est_vel[0]*est_vel[0] + est_vel[1]*est_vel[1]);
@@ -100,11 +100,11 @@ RadarOdometry::PointXYZPRVAETuple RadarOdometry::RegisterPoints(const pcl::Point
 
             if(sigma > 1.0) sigma = 1.0;
 
-            new_pose = RegisterScan2Scan3DoF2(*ransac_radar_ptr, *last_radar_ptr, 
+            new_pose = RegisterScan2Scan3DoF2(ransac_radar_points, last_radar_ptr, 
                                             last_pose * delta_pose, last_pose, 
                                             3.0 * sigma, sigma / 3.0);            
         }
-        *last_radar_ptr = *ransac_radar_ptr;
+        last_radar_ptr = ransac_radar_points;
 
     }
     else if(config_.odometry_type == OdometryType::ICP){
@@ -120,7 +120,7 @@ RadarOdometry::PointXYZPRVAETuple RadarOdometry::RegisterPoints(const pcl::Point
     Eigen::Matrix4d model_deviation = initial_guess.inverse() * new_pose;
     adaptive_threshold_.UpdateModelDeviation(model_deviation);
 
-    return {*ransac_radar_ptr, *ransac_radar_ptr};
+    return {ransac_radar_points, ransac_radar_points};
 }
 
 // Regard dt is same all time

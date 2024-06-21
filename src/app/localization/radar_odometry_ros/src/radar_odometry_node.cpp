@@ -23,8 +23,6 @@ RadarOdometryNode::RadarOdometryNode(int id, std::string task_node, double perio
     o_vel_comp_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
     o_cur_radar_global_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
 
-    static_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
-
     radar_pose_ = Eigen::Matrix4d::Identity();
     last_radar_pose_ = Eigen::Matrix4d::Identity();
     radar_calib_pose_ = Eigen::Matrix4d::Identity();
@@ -42,7 +40,7 @@ void RadarOdometryNode::Init()
 
     ProcessINI();
 
-    s_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_pc1_, 10, &RadarOdometryNode::CallbackPointCloud, this, ros::TransportHints().tcpNoDelay());    
+    // s_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_pc1_, 10, &RadarOdometryNode::CallbackPointCloud, this, ros::TransportHints().tcpNoDelay());    
     s_point_cloud2_ = nh.subscribe(cfg_str_sensor_topic_pc2_, 10, &RadarOdometryNode::CallbackPointCloud2, this, ros::TransportHints().tcpNoDelay());                               
     s_can_ = nh.subscribe(cfg_str_can_topic_, 10, &RadarOdometryNode::CallbackCAN, this, ros::TransportHints().tcpNoDelay());    
     s_imu_ = nh.subscribe(cfg_str_imu_topic_, 10, &RadarOdometryNode::CallbackIMU, this, ros::TransportHints().tcpNoDelay());    
@@ -78,17 +76,11 @@ void RadarOdometryNode::Run()
     std::cout<<" "<<std::endl;
     ROS_INFO("RadarOdometryNode: Run");
 
-    LidarDataStruct cur_lidar_struct;
     RadarDataStruct cur_radar_struct;
     CanStruct cur_can_struct;
 
-    if(cfg_str_sensor_type_ == "lidar"){
-        std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
-        cur_lidar_struct = i_lidar_struct_;
-        int i_point_cloud_num = cur_lidar_struct.points->size();
-        ROS_INFO_STREAM("RadarOdometryNode: Input liadr points num: " << i_point_cloud_num);
-    }
-    else{
+
+    {
         std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
         cur_radar_struct = i_radar_struct_;
     }
@@ -114,18 +106,18 @@ void RadarOdometryNode::Run()
 
 void RadarOdometryNode::Publish()
 {
-    pcl::toROSMsg(*o_vel_comp_radar_ptr_, o_vel_comp_radar_cloud_);
-    o_vel_comp_radar_cloud_.header.stamp = ros::Time::now();
-    o_vel_comp_radar_cloud_.header.frame_id = "afi910";
+    // pcl::toROSMsg(*o_vel_comp_radar_ptr_, o_vel_comp_radar_cloud_);
+    // o_vel_comp_radar_cloud_.header.stamp = ros::Time::now();
+    // o_vel_comp_radar_cloud_.header.frame_id = "afi910";
 
     p_vel_comp_radar_cloud_.publish(o_vel_comp_radar_cloud_);
 
     // 
-    pcl::toROSMsg(*o_cur_radar_global_ptr_, o_cur_radar_global_cloud_);
-    o_cur_radar_global_cloud_.header.stamp = ros::Time::now();
-    o_cur_radar_global_cloud_.header.frame_id = "world";
+    // pcl::toROSMsg(*o_cur_radar_global_ptr_, o_cur_radar_global_cloud_);
+    // o_cur_radar_global_cloud_.header.stamp = ros::Time::now();
+    // o_cur_radar_global_cloud_.header.frame_id = "world";
 
-    p_cur_radar_global_cloud_.publish(o_cur_radar_global_cloud_);
+    // p_cur_radar_global_cloud_.publish(o_cur_radar_global_cloud_);
 
     //
     p_radar_vel_heading_marker_array_.publish(o_radar_vel_heading_markers_);
@@ -238,18 +230,22 @@ void RadarOdometryNode::ProcessINI()
 
 void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
 {
-    int i_point_cloud_num = i_radar_struct.points->size();
+    int i_point_cloud_num = i_radar_struct.points.size();
     ROS_INFO_STREAM("RadarOdometryNode: Input radar points num: " << i_point_cloud_num);
 
     o_vel_comp_radar_ptr_->points.clear();
-    static_radar_ptr_->points.clear();
 
     const auto &[frame, keypoints] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
     radar_pose_ = odometry_.poses().back();
 
-    pcl::transformPointCloud(frame, *o_cur_radar_global_ptr_,  radar_pose_.cast<float>() * radar_calib_pose_.cast<float>());
 
-    *o_vel_comp_radar_ptr_ = keypoints;
+
+    auto frame_header = i_point_cloud2_.header;
+    frame_header.frame_id = "afi910";
+    o_vel_comp_radar_cloud_ = *EigenToPointCloud2(frame, frame_header);
+
+    // o_cur_radar_global_cloud_ = *EigenToPointCloud2(frame, frame_header);
+
 }
 
 double RadarOdometryNode::GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct)

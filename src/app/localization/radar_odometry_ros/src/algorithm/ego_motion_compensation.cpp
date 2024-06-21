@@ -7,11 +7,11 @@ namespace{
 
 namespace radar_odometry {
 
-pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, 
+std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
                                                 const Eigen::Matrix4d &predicted_vel,
                                                 float margin)
 {
-    pcl::PointCloud<PointXYZPRVAE>::Ptr inliers(new pcl::PointCloud<PointXYZPRVAE>);
+    std::vector<RadarPoint> inliers;
     std::vector<int> current_inliers;
 
     Eigen::Vector3d linear_vel = predicted_vel.block<3,1>(0, 3);
@@ -24,10 +24,10 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZP
     std::cout<<"Predicted radar_v_x: "<<radar_v_x <<" radar_v_y: "<<radar_v_y<<std::endl;
 
 
-    for (size_t i = 0; i < cloud->points.size(); ++i) {
+    for (size_t i = 0; i < cloud.size(); ++i) {
 
-        float point_azim_rad = cloud->points[i].azi_angle * M_PI / 180.0f;
-        float point_vel = -cloud->points[i].vel;
+        float point_azim_rad = cloud[i].azi_angle * M_PI / 180.0f;
+        float point_vel = - cloud[i].vel;
         // double est_radial_vel = radar_v_x * cos(point_azim_rad) + radar_v_y * sin(point_azim_rad)
         //                         + radar_v_x * sin(point_azim_rad) - radar_v_y * cos(point_azim_rad);
         double est_radial_vel = radar_v_x * cos(point_azim_rad);
@@ -40,20 +40,20 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZP
     }
 
     for (int idx : current_inliers) {
-        inliers->points.push_back(cloud->points[idx]);
+        inliers.push_back(cloud[idx]);
     }
 
     return inliers;
 }
 
-Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
+Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud)
 {
-    Eigen::MatrixXd A(cloud->points.size(), 2);
-    Eigen::VectorXd b(cloud->points.size());
+    Eigen::MatrixXd A(cloud.size(), 2);
+    Eigen::VectorXd b(cloud.size());
 
-    for (size_t i = 0; i < cloud->points.size(); ++i) {
-        float x = cloud->points[i].azi_angle * M_PI/180.0f;
-        float y = -cloud->points[i].vel;
+    for (size_t i = 0; i < cloud.size(); ++i) {
+        float x = cloud[i].azi_angle * M_PI/180.0f;
+        float y = - cloud[i].vel;
 
         A(i, 0) = cos(x);
         A(i, 1) = sin(x);
@@ -66,14 +66,14 @@ Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
     return coeffs;  // [vx, vy]
 }
 
-Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices)
+Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<int>& indices)
 {
     Eigen::MatrixXd A(indices.size(), 2);
     Eigen::VectorXd b(indices.size());
 
     for (size_t i = 0; i < indices.size(); ++i) {
-        float x = cloud->points[indices[i]].azi_angle * M_PI / 180.0f;
-        float y = -cloud->points[indices[i]].vel;
+        float x = cloud[indices[i]].azi_angle * M_PI / 180.0f;
+        float y = -cloud[indices[i]].vel;
 
         A(i, 0) = cos(x);
         A(i, 1) = sin(x);
@@ -86,13 +86,13 @@ Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const 
     return coeffs;  // [vx, vy]
 }
 
-pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, float margin, int max_iterations)
+std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations)
 {
-    pcl::PointCloud<PointXYZPRVAE>::Ptr inliers(new pcl::PointCloud<PointXYZPRVAE>);
+    std::vector<RadarPoint> inliers;
     std::vector<int> best_inliers;
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, cloud->points.size() - 1);
+    std::uniform_int_distribution<> dis(0, cloud.size() - 1);
 
     int best_inliers_count = 0;
     Eigen::Vector2d best_coeffs;
@@ -106,9 +106,9 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVA
 
         // Count inliers
         std::vector<int> current_inliers;
-        for (size_t i = 0; i < cloud->points.size(); ++i) {
-            float x = cloud->points[i].azi_angle * M_PI / 180.0f;
-            float y = -cloud->points[i].vel;
+        for (size_t i = 0; i < cloud.size(); ++i) {
+            float x = cloud[i].azi_angle * M_PI / 180.0f;
+            float y = - cloud[i].vel;
             float predicted_y = coeffs[0] * cos(x) + coeffs[1] * sin(x);
 
             if (std::abs(predicted_y - y) <= margin) {
@@ -126,12 +126,8 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVA
     
     
     for (int idx : best_inliers) {
-        inliers->points.push_back(cloud->points[idx]);
+        inliers.push_back(cloud[idx]);
     }
-        
-    inliers->width = inliers->points.size();
-    inliers->height = 1;
-    inliers->is_dense = true;
 
     return inliers;
 }

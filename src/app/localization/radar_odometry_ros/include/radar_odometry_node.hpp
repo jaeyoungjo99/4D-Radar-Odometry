@@ -81,13 +81,7 @@ using namespace std;
 
 typedef struct {
     double timestamp; 
-    pcl::PointCloud<pcl::PointXYZI>::Ptr points;
-    std::string frame_id;
-} LidarDataStruct;
-
-typedef struct {
-    double timestamp; 
-    pcl::PointCloud<PointXYZPRVAE>::Ptr points;
+    std::vector<RadarPoint> points;
     std::string frame_id;
 } RadarDataStruct;
 
@@ -115,92 +109,64 @@ class RadarOdometryNode : public AtomTask {
     private:
         inline void CallbackPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
+
             i_point_cloud2_ = *msg;
-            if(cfg_str_sensor_type_ == "lidar"){
-                pcl::moveFromROSMsg(i_point_cloud2_, *i_main_lidar_ptr_);
+            const auto points =  PointCloud2ToRadarPoints(msg);
 
-                i_main_lidar_raw_tuple_ = std::make_tuple(i_main_lidar_ptr_, i_point_cloud2_.header.frame_id, i_point_cloud2_.header.stamp);
-                
-                i_lidar_struct_.timestamp = i_point_cloud2_.header.stamp.toSec();
-                i_lidar_struct_.points = i_main_lidar_ptr_;
-                i_lidar_struct_.frame_id = i_point_cloud2_.header.frame_id;
+            i_radar_struct_.timestamp = msg->header.stamp.toSec();
+            i_radar_struct_.points = points;
+            i_radar_struct_.frame_id = msg->header.frame_id;
 
-                b_is_new_point_cloud_ = true;
-            }
-
-            if(cfg_str_sensor_type_ == "bitsensing"){
-                pcl::moveFromROSMsg(i_point_cloud2_, *temp_radar_ptr_);
-                i_main_radar_ptr_->points.clear();
-
-                int i_point_num = temp_radar_ptr_->points.size();
-                float f_p_dist;
-                for(int i = 0; i < i_point_num; i++){
-                    PointXYZPRVAE *iter_point = &temp_radar_ptr_->points[i];
-                    f_p_dist = sqrt(iter_point->x*iter_point->x + iter_point->y*iter_point->y + iter_point->z*iter_point->z); 
-                    if(f_p_dist < cfg_d_max_distance_m_){
-                        i_main_radar_ptr_->points.push_back(*iter_point);
-                    }
-                }
-
-                i_main_radar_raw_tuple_ = std::make_tuple(i_main_radar_ptr_, i_point_cloud2_.header.frame_id, i_point_cloud2_.header.stamp);
-                
-                i_radar_struct_.timestamp = i_point_cloud2_.header.stamp.toSec();
-                i_radar_struct_.points = i_main_radar_ptr_;
-                i_radar_struct_.frame_id = i_point_cloud2_.header.frame_id;
-
-                b_is_new_point_cloud_ = true;
-            }
-
-            
+            b_is_new_point_cloud_ = true;
 
         }
 
-        inline void CallbackPointCloud(const sensor_msgs::PointCloud::ConstPtr& msg){
-            std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
-            if (cfg_str_sensor_type_ == "ntu") {
-                // sensor_msgs::PointCloud를 PCL 포인트 클라우드로 변환
-                i_main_radar_ptr_->points.clear();
+        // inline void CallbackPointCloud(const sensor_msgs::PointCloud::ConstPtr& msg){
+        //     std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
+        //     if (cfg_str_sensor_type_ == "ntu") {
+        //         // sensor_msgs::PointCloud를 PCL 포인트 클라우드로 변환
+        //         i_main_radar_ptr_->points.clear();
 
-                float f_p_dist;
-                for (size_t i = 0; i < msg->points.size(); ++i) {
-                    PointXYZPRVAE pcl_point;
-                    pcl_point.x = msg->points[i].x;
-                    pcl_point.y = msg->points[i].y;
-                    pcl_point.z = msg->points[i].z;
+        //         float f_p_dist;
+        //         for (size_t i = 0; i < msg->points.size(); ++i) {
+        //             PointXYZPRVAE pcl_point;
+        //             pcl_point.x = msg->points[i].x;
+        //             pcl_point.y = msg->points[i].y;
+        //             pcl_point.z = msg->points[i].z;
                     
-                    // 포인트의 Alpha, Beta, Doppler, Power, Range 정보를 채우기 위해 채널 데이터 검색
-                    for (size_t j = 0; j < msg->channels.size(); ++j) {
-                        const auto& channel = msg->channels[j];
-                        if (channel.name == "Alpha") {
-                            pcl_point.azi_angle = channel.values[i] * (-1.0);
-                        } else if (channel.name == "Beta") {
-                            pcl_point.ele_angle = channel.values[i] * (-1.0);
-                        } else if (channel.name == "Doppler") {
-                            pcl_point.vel = channel.values[i];
-                        } else if (channel.name == "Power") {
-                            pcl_point.power = channel.values[i];
-                        } else if (channel.name == "Range") {
-                            pcl_point.range = channel.values[i];
-                        }
-                    }
-                    f_p_dist = sqrt(pcl_point.x * pcl_point.x + pcl_point.y * pcl_point.y + pcl_point.z * pcl_point.z);
-                    if (f_p_dist < cfg_d_max_distance_m_) {
-                        i_main_radar_ptr_->points.push_back(pcl_point);
-                    }
+        //             // 포인트의 Alpha, Beta, Doppler, Power, Range 정보를 채우기 위해 채널 데이터 검색
+        //             for (size_t j = 0; j < msg->channels.size(); ++j) {
+        //                 const auto& channel = msg->channels[j];
+        //                 if (channel.name == "Alpha") {
+        //                     pcl_point.azi_angle = channel.values[i] * (-1.0);
+        //                 } else if (channel.name == "Beta") {
+        //                     pcl_point.ele_angle = channel.values[i] * (-1.0);
+        //                 } else if (channel.name == "Doppler") {
+        //                     pcl_point.vel = channel.values[i];
+        //                 } else if (channel.name == "Power") {
+        //                     pcl_point.power = channel.values[i];
+        //                 } else if (channel.name == "Range") {
+        //                     pcl_point.range = channel.values[i];
+        //                 }
+        //             }
+        //             f_p_dist = sqrt(pcl_point.x * pcl_point.x + pcl_point.y * pcl_point.y + pcl_point.z * pcl_point.z);
+        //             if (f_p_dist < cfg_d_max_distance_m_) {
+        //                 i_main_radar_ptr_->points.push_back(pcl_point);
+        //             }
 
-                }
+        //         }
 
-                int i_point_num = temp_radar_ptr_->points.size();
+        //         int i_point_num = temp_radar_ptr_->points.size();
 
-                i_radar_struct_.timestamp = msg->header.stamp.toSec();
-                i_radar_struct_.points = i_main_radar_ptr_;
-                i_radar_struct_.frame_id = msg->header.frame_id;
+        //         i_radar_struct_.timestamp = msg->header.stamp.toSec();
+        //         i_radar_struct_.points = i_main_radar_ptr_;
+        //         i_radar_struct_.frame_id = msg->header.frame_id;
 
-                b_is_new_point_cloud_ = true;
-            }
+        //         b_is_new_point_cloud_ = true;
+        //     }
 
             
-        }
+        // }
 
         inline void CallbackCAN(const geometry_msgs::TwistStampedConstPtr& msg){
             std::lock_guard<std::mutex> lock(mutex_can_);
@@ -257,7 +223,6 @@ class RadarOdometryNode : public AtomTask {
         pcl::PointCloud<PointXYZPRVAE>::Ptr o_vel_comp_radar_ptr_;
         pcl::PointCloud<PointXYZPRVAE>::Ptr o_cur_radar_global_ptr_;
 
-        LidarDataStruct i_lidar_struct_;
         RadarDataStruct i_radar_struct_;
         CanStruct i_can_struct_;
 
@@ -273,8 +238,6 @@ class RadarOdometryNode : public AtomTask {
         Eigen::Matrix4d radar_pose_;
         Eigen::Matrix4d last_radar_pose_;
         Eigen::Matrix4d radar_calib_pose_;
-
-        pcl::PointCloud<PointXYZPRVAE>::Ptr static_radar_ptr_;
 
         // Configure
         std::string cfg_str_sensor_type_;

@@ -37,15 +37,15 @@
 
 namespace radar_odometry {
 
-Eigen::Matrix4d RegisterScan2Scan3DoF(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                 const pcl::PointCloud<PointXYZPRVAE> i_last_points,
+Eigen::Matrix4d RegisterScan2Scan3DoF(const std::vector<RadarPoint> i_cur_points,
+                                 const std::vector<RadarPoint> i_last_points,
                                 const Eigen::Matrix4d &initial_guess,
                                 const Eigen::Matrix4d &last_pose,
                                 double max_correspondence_distance,
                                 double kernel);
 
-Eigen::Matrix4d RegisterScan2Scan3DoF2(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                      const pcl::PointCloud<PointXYZPRVAE> i_last_points,
+Eigen::Matrix4d RegisterScan2Scan3DoF2(const std::vector<RadarPoint> i_cur_points,
+                                      const std::vector<RadarPoint> i_last_points,
                                       const Eigen::Matrix4d &initial_guess,
                                       const Eigen::Matrix4d &last_pose,
                                       double max_correspondence_distance,

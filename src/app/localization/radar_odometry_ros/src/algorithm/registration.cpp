@@ -79,23 +79,23 @@ void ComposeTransform(const float transformTobeMapped[6], Eigen::Matrix4d& trans
 }
 
 
-void TransformPoints(const Eigen::Matrix4d &transform, pcl::PointCloud<PointXYZPRVAE> &i_points) {
+void TransformPoints(const Eigen::Matrix4d &transform, std::vector<RadarPoint> &i_points) {
 
-    for (size_t i = 0; i < i_points.points.size(); ++i) {
+    for (size_t i = 0; i < i_points.size(); ++i) {
         // 입력 포인트를 Eigen::Vector4d 동차 좌표로 변환
-        Eigen::Vector4d input_point(i_points.points[i].x, i_points.points[i].y, i_points.points[i].z, 1.0);
+        Eigen::Vector4d input_point(i_points[i].pose.x(), i_points[i].pose.y(), i_points[i].pose.z(), 1.0);
 
         // 변환 행렬을 사용하여 출력 포인트를 계산
         Eigen::Vector4d output_point = transform * input_point;
 
         // 변환된 좌표를 출력 포인트로 저장
-        i_points.points[i].x = output_point.x();
-        i_points.points[i].y = output_point.y();
-        i_points.points[i].z = output_point.z();
+        i_points[i].pose.x() = output_point.x();
+        i_points[i].pose.y() = output_point.y();
+        i_points[i].pose.z() = output_point.z();
     }
 }
 
-void TransformPoints(const Eigen::Matrix4d &transform, const pcl::PointCloud<PointXYZPRVAE> i_points, pcl::PointCloud<PointXYZPRVAE>& o_points) {
+void TransformPoints(const Eigen::Matrix4d &transform, const std::vector<RadarPoint> i_points, std::vector<RadarPoint>& o_points) {
     o_points.clear();
     o_points = i_points;
     
@@ -105,17 +105,17 @@ void TransformPoints(const Eigen::Matrix4d &transform, const pcl::PointCloud<Poi
     // 변환 행렬의 상위 3x1 부분을 평행 이동 벡터로 사용
     Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
 
-    for (size_t i = 0; i < i_points.points.size(); ++i) {
+    for (size_t i = 0; i < i_points.size(); ++i) {
         // 입력 포인트를 Eigen::Vector4d 동차 좌표로 변환
-        Eigen::Vector4d input_point(i_points.points[i].x, i_points.points[i].y, i_points.points[i].z, 1.0);
+        Eigen::Vector4d input_point(i_points[i].pose.x(), i_points[i].pose.y(), i_points[i].pose.z(), 1.0);
 
         // 변환 행렬을 사용하여 출력 포인트를 계산
         Eigen::Vector4d output_point = transform * input_point;
 
         // 변환된 좌표를 출력 포인트로 저장
-        o_points.points[i].x = output_point.x();
-        o_points.points[i].y = output_point.y();
-        o_points.points[i].z = output_point.z();
+        o_points[i].pose.x() = output_point.x();
+        o_points[i].pose.y() = output_point.y();
+        o_points[i].pose.z() = output_point.z();
     }
 }
 
@@ -148,22 +148,22 @@ Eigen::Matrix2d vector2dToSkewSymmetricMatrix(const Eigen::Vector2d &v) {
 }
 
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>> GetCorrespondences(const pcl::PointCloud<PointXYZPRVAE> source,
+std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>> GetCorrespondences(const std::vector<RadarPoint> source,
                                                                                        double max_correspondance_distance)
 {
     std::vector<Eigen::Vector3d> source_points;
     std::vector<Eigen::Vector3d> target_points;
 
-    int i_source_num = source.points.size();
+    int i_source_num = source.size();
 
     for (int i = 0; i < i_source_num; ++i) {
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
         pcl::PointXYZINormal search_point;
-        search_point.x = source.points[i].x;
-        search_point.y = source.points[i].y;
-        search_point.z = source.points[i].z;
+        search_point.x = source[i].pose.x();
+        search_point.y = source[i].pose.y();
+        search_point.z = source[i].pose.z();
 
         if (kdtree_.nearestKSearch(search_point, 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
             if (pointNKNSquaredDistance[0] < max_correspondance_distance) {
@@ -182,28 +182,28 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>> GetCorres
 }
 
 std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>> 
-                                    GetCorrespondencesOrigin(const pcl::PointCloud<PointXYZPRVAE> source_origin,
-                                    const pcl::PointCloud<PointXYZPRVAE> source_glob,
+                                    GetCorrespondencesOrigin(const std::vector<RadarPoint> source_origin,
+                                    const std::vector<RadarPoint> source_glob,
                                     double max_correspondance_distance)
 {
     std::vector<Eigen::Vector3d> source_origin_points;
     std::vector<Eigen::Vector3d> source_glob_points;
     std::vector<Eigen::Vector3d> target_points;
 
-    int i_source_num = source_glob.points.size();
+    int i_source_num = source_glob.size();
 
     for (int i = 0; i < i_source_num; ++i) {
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
         pcl::PointXYZINormal glob_point, origin_point;
-        origin_point.x = source_origin.points[i].x;
-        origin_point.y = source_origin.points[i].y;
-        origin_point.z = source_origin.points[i].z;
+        origin_point.x = source_origin[i].pose.x();
+        origin_point.y = source_origin[i].pose.y();
+        origin_point.z = source_origin[i].pose.z();
 
-        glob_point.x = source_glob.points[i].x;
-        glob_point.y = source_glob.points[i].y;
-        glob_point.z = source_glob.points[i].z;
+        glob_point.x = source_glob[i].pose.x();
+        glob_point.y = source_glob[i].pose.y();
+        glob_point.z = source_glob[i].pose.z();
 
         if (kdtree_.nearestKSearch(glob_point, 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
             if (pointNKNSquaredDistance[0] < max_correspondance_distance) {
@@ -446,16 +446,16 @@ bool LMOptimization(const std::vector<Eigen::Vector3d> &source_origin,
 
 namespace radar_odometry {
 
-Eigen::Matrix4d RegisterScan2Scan3DoF(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                      const pcl::PointCloud<PointXYZPRVAE> i_last_points,
+Eigen::Matrix4d RegisterScan2Scan3DoF(const std::vector<RadarPoint> i_cur_points,
+                                      const std::vector<RadarPoint> i_last_points,
                                       const Eigen::Matrix4d &initial_guess,
                                       const Eigen::Matrix4d &last_pose,
                                       double max_correspondence_distance,
                                       double kernel)
 {   
-    pcl::PointCloud<PointXYZPRVAE> cur_origin_points = i_cur_points;
-    pcl::PointCloud<PointXYZPRVAE> cur_moved_points = i_cur_points;
-    pcl::PointCloud<PointXYZPRVAE> last_glob_points;
+    std::vector<RadarPoint> cur_origin_points = i_cur_points;
+    std::vector<RadarPoint> cur_moved_points = i_cur_points;
+    std::vector<RadarPoint> last_glob_points;
 
     // 과거 포인트를 global로 이동. 필수적
     TransformPoints(last_pose, i_last_points, last_glob_points);
@@ -464,18 +464,18 @@ Eigen::Matrix4d RegisterScan2Scan3DoF(const pcl::PointCloud<PointXYZPRVAE> i_cur
     
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr target_xyzin_ptr(new pcl::PointCloud<pcl::PointXYZINormal>);
 
-    int i_source_point_num = i_cur_points.points.size();
-    int i_target_point_num = last_glob_points.points.size();
+    int i_source_point_num = i_cur_points.size();
+    int i_target_point_num = last_glob_points.size();
 
-    std::cout<<"Targel Local Num: "<<last_glob_points.points.size()<<std::endl;
+    std::cout<<"Targel Local Num: "<<last_glob_points.size()<<std::endl;
     std::cout<<"Target Glob Num: "<<i_target_point_num<<std::endl;
 
 
     for(int i = 0; i < i_target_point_num; ++i){
         pcl::PointXYZINormal point;
-        point.x = last_glob_points.points[i].x;
-        point.y = last_glob_points.points[i].y;
-        point.z = last_glob_points.points[i].z;
+        point.x = last_glob_points[i].pose.x();
+        point.y = last_glob_points[i].pose.y();
+        point.z = last_glob_points[i].pose.z();
         // TODO
 
         target_xyzin_ptr->points.push_back(point);
@@ -526,24 +526,24 @@ Eigen::Matrix4d RegisterScan2Scan3DoF(const pcl::PointCloud<PointXYZPRVAE> i_cur
     // return initial_guess * T_icp;
 }
 
-Eigen::Matrix4d RegisterScan2Scan3DoF2(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                      const pcl::PointCloud<PointXYZPRVAE> i_last_points,
+Eigen::Matrix4d RegisterScan2Scan3DoF2(const std::vector<RadarPoint> i_cur_points,
+                                      const std::vector<RadarPoint> i_last_points,
                                       const Eigen::Matrix4d &initial_guess,
                                       const Eigen::Matrix4d &last_pose,
                                       double max_correspondence_distance,
                                       double kernel)
 {   
-    pcl::PointCloud<PointXYZPRVAE> cur_origin_points = i_cur_points;
-    pcl::PointCloud<PointXYZPRVAE> cur_moved_points;
-    pcl::PointCloud<PointXYZPRVAE> last_glob_points;
+    std::vector<RadarPoint> cur_origin_points = i_cur_points;
+    std::vector<RadarPoint> cur_moved_points;
+    std::vector<RadarPoint> last_glob_points;
 
     TransformPoints(last_pose, i_last_points, last_glob_points);
 
     
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr target_xyzin_ptr(new pcl::PointCloud<pcl::PointXYZINormal>);
 
-    int i_source_point_num = i_cur_points.points.size();
-    int i_target_point_num = last_glob_points.points.size();
+    int i_source_point_num = i_cur_points.size();
+    int i_target_point_num = last_glob_points.size();
 
     std::cout<<"i_source_point_num: "<<i_source_point_num<<std::endl;
     std::cout<<"i_target_point_num: "<<i_target_point_num<<std::endl;
@@ -551,9 +551,9 @@ Eigen::Matrix4d RegisterScan2Scan3DoF2(const pcl::PointCloud<PointXYZPRVAE> i_cu
 
     for(int i = 0; i < i_target_point_num; ++i){
         pcl::PointXYZINormal point;
-        point.x = last_glob_points.points[i].x;
-        point.y = last_glob_points.points[i].y;
-        point.z = last_glob_points.points[i].z;
+        point.x = last_glob_points[i].pose.x();
+        point.y = last_glob_points[i].pose.y();
+        point.z = last_glob_points[i].pose.z();
 
         target_xyzin_ptr->points.push_back(point);
 
@@ -574,10 +574,7 @@ Eigen::Matrix4d RegisterScan2Scan3DoF2(const pcl::PointCloud<PointXYZPRVAE> i_cu
     Eigen::Matrix4d T_icp = initial_guess;
 
     for(int j = 0; j < MAX_NUM_ITERATIONS_; ++j){
-        
-        // transformTobeMapped 는 전역 좌표계 source 위치
-        // std::cout<<" "<<std::endl;
-        
+
         // cur_origin_points to Source_glob transform
         TransformPoints(T_icp, cur_origin_points, cur_moved_points);
 
