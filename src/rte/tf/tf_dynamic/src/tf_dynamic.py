@@ -171,7 +171,8 @@ class TransformFrameDynamic(object):
         """
         Update frame function
         """
-        update_time = self.vehicle_state.header.stamp
+        # update_time = self.vehicle_state.header.stamp
+        update_time = self.radar_state.header.stamp
         if self.frame_list is not None:
             for frame in self.frame_list:
                 if frame["type"] != 'static':

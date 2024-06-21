@@ -270,9 +270,9 @@ class RadarOdometryNode : public AtomTask {
         bool b_is_new_publish_ = false;
 
         double d_last_radar_time_sec_;
-        Eigen::Matrix4f radar_pose_;
-        Eigen::Matrix4f last_radar_pose_;
-        Eigen::Matrix4f radar_calib_pose_;
+        Eigen::Matrix4d radar_pose_;
+        Eigen::Matrix4d last_radar_pose_;
+        Eigen::Matrix4d radar_calib_pose_;
 
         pcl::PointCloud<PointXYZPRVAE>::Ptr static_radar_ptr_;
 

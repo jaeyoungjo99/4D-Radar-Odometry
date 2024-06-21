@@ -8,20 +8,20 @@ namespace{
 namespace radar_odometry {
 
 pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, 
-                                                const Eigen::Matrix4f &predicted_vel,
+                                                const Eigen::Matrix4d &predicted_vel,
                                                 float margin)
 {
     pcl::PointCloud<PointXYZPRVAE>::Ptr inliers(new pcl::PointCloud<PointXYZPRVAE>);
     std::vector<int> current_inliers;
 
-    Eigen::Vector3f linear_vel = predicted_vel.block<3,1>(0, 3);
-    Eigen::Matrix3f angular_vel = predicted_vel.block<3,3>(0, 0);
+    Eigen::Vector3d linear_vel = predicted_vel.block<3,1>(0, 3);
+    Eigen::Matrix3d angular_vel = predicted_vel.block<3,3>(0, 0);
 
     double radar_v_x = linear_vel(0);
     double radar_v_y = linear_vel(1);
     double radar_v_z = linear_vel(2);
 
-    std::cout<<"radar_v_x: "<<radar_v_x <<" radar_v_y: "<<radar_v_y<<std::endl;
+    std::cout<<"Predicted radar_v_x: "<<radar_v_x <<" radar_v_y: "<<radar_v_y<<std::endl;
 
 
     for (size_t i = 0; i < cloud->points.size(); ++i) {
@@ -46,10 +46,10 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZP
     return inliers;
 }
 
-Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
+Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
 {
-    Eigen::MatrixXf A(cloud->points.size(), 2);
-    Eigen::VectorXf b(cloud->points.size());
+    Eigen::MatrixXd A(cloud->points.size(), 2);
+    Eigen::VectorXd b(cloud->points.size());
 
     for (size_t i = 0; i < cloud->points.size(); ++i) {
         float x = cloud->points[i].azi_angle * M_PI/180.0f;
@@ -61,15 +61,15 @@ Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud)
     }
 
     // Solve the normal equation A^T * A * coeffs = A^T * b
-    Eigen::Vector2f coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
+    Eigen::Vector2d coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
     
     return coeffs;  // [vx, vy]
 }
 
-Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices)
+Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices)
 {
-    Eigen::MatrixXf A(indices.size(), 2);
-    Eigen::VectorXf b(indices.size());
+    Eigen::MatrixXd A(indices.size(), 2);
+    Eigen::VectorXd b(indices.size());
 
     for (size_t i = 0; i < indices.size(); ++i) {
         float x = cloud->points[indices[i]].azi_angle * M_PI / 180.0f;
@@ -81,7 +81,7 @@ Eigen::Vector2f FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const 
     }
 
     // Solve the normal equation A^T * A * coeffs = A^T * b
-    Eigen::Vector2f coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
+    Eigen::Vector2d coeffs = (A.transpose() * A).ldlt().solve(A.transpose() * b);
 
     return coeffs;  // [vx, vy]
 }
@@ -95,14 +95,14 @@ pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVA
     std::uniform_int_distribution<> dis(0, cloud->points.size() - 1);
 
     int best_inliers_count = 0;
-    Eigen::Vector2f best_coeffs;
+    Eigen::Vector2d best_coeffs;
 
     for (int iter = 0; iter < max_iterations; ++iter) {
         // Randomly select 2 points
         std::vector<int> sample_indices = {dis(gen), dis(gen)};
 
         // Fit model to the sample points
-        Eigen::Vector2f coeffs = FitSine(cloud, sample_indices);
+        Eigen::Vector2d coeffs = FitSine(cloud, sample_indices);
 
         // Count inliers
         std::vector<int> current_inliers;

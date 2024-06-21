@@ -66,31 +66,35 @@ struct RadarOdometryConfig{
 
 class RadarOdometry{
 public:
+    using PointXYZPRVAETuple = std::tuple<pcl::PointCloud<PointXYZPRVAE>, pcl::PointCloud<PointXYZPRVAE>>;
+public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
-        adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range) {}
+        adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range)
+        {last_radar_ptr.reset(new pcl::PointCloud<PointXYZPRVAE>());}
+
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
 
 public:
     // std::tuple<pcl::PointCloud<PointXYZPRVAE>::Ptr, Vector3dVector>
-    bool RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_radar_points, const double i_radar_timestamp_sec);
-    Eigen::Matrix4f GetPredictionModel() const;
-    Eigen::Matrix4f GetPredictionModel(double cur_timestamp) const;
+    PointXYZPRVAETuple RegisterPoints(const pcl::PointCloud<PointXYZPRVAE>::Ptr i_radar_points, const double i_radar_timestamp_sec);
+    Eigen::Matrix4d GetPredictionModel() const;
+    Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
     
     double GetAdaptiveThreshold();
     bool HasMoved();
 
 public:
-    std::vector<Eigen::Matrix4f> poses() const {return poses_;};
+    std::vector<Eigen::Matrix4d> poses() const {return poses_;};
 
 private:
-    std::vector<Eigen::Matrix4f> poses_;
+    std::vector<Eigen::Matrix4d> poses_;
     std::vector<double> times_;
     RadarOdometryConfig config_;
     AdaptiveThreshold adaptive_threshold_;
 
     double d_last_radar_time_sec_;
-
+    pcl::PointCloud<PointXYZPRVAE>::Ptr last_radar_ptr;
 };
 
 }

@@ -25,9 +25,9 @@ RadarOdometryNode::RadarOdometryNode(int id, std::string task_node, double perio
 
     static_radar_ptr_.reset(new pcl::PointCloud<PointXYZPRVAE>());
 
-    radar_pose_ = Eigen::Matrix4f::Identity();
-    last_radar_pose_ = Eigen::Matrix4f::Identity();
-    radar_calib_pose_ = Eigen::Matrix4f::Identity();
+    radar_pose_ = Eigen::Matrix4d::Identity();
+    last_radar_pose_ = Eigen::Matrix4d::Identity();
+    radar_calib_pose_ = Eigen::Matrix4d::Identity();
     d_last_radar_time_sec_ = 0.0f;
 }
 
@@ -75,7 +75,7 @@ void RadarOdometryNode::Init()
 void RadarOdometryNode::Run()
 {   
     if(b_is_new_point_cloud_ == false) return;
-
+    std::cout<<" "<<std::endl;
     ROS_INFO("RadarOdometryNode: Run");
 
     LidarDataStruct cur_lidar_struct;
@@ -106,6 +106,7 @@ void RadarOdometryNode::Run()
 
         RunRadarOdometry(cur_radar_struct);
     }
+    
 
     b_is_new_point_cloud_ = false;
     b_is_new_publish_ = true;
@@ -130,7 +131,7 @@ void RadarOdometryNode::Publish()
     p_radar_vel_heading_marker_array_.publish(o_radar_vel_heading_markers_);
 
     //
-    Eigen::Matrix4f calibrated_radar_pose = radar_pose_ * radar_calib_pose_;
+    Eigen::Matrix4d calibrated_radar_pose = radar_pose_ * radar_calib_pose_;
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time::now();
     odom.header.frame_id = "world";
@@ -142,8 +143,8 @@ void RadarOdometryNode::Publish()
     odom.pose.pose.position.z = calibrated_radar_pose(2, 3);
 
     // Extract rotation matrix
-    Eigen::Matrix3f rotation_matrix = calibrated_radar_pose.block<3, 3>(0, 0);
-    Eigen::Quaternionf quaternion(rotation_matrix);
+    Eigen::Matrix3d rotation_matrix = calibrated_radar_pose.block<3, 3>(0, 0);
+    Eigen::Quaterniond quaternion(rotation_matrix);
 
     // Assign quaternion to odom message
     odom.pose.pose.orientation.x = quaternion.x();
@@ -207,6 +208,29 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_distance_m");
         }
 
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "voxel_size", config_.voxel_size) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/voxel_size");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "max_range", config_.max_range) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_range");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "min_range", config_.min_range) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/min_range");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "max_points_per_voxel", config_.max_points_per_voxel) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_points_per_voxel");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "min_motion_th", config_.min_motion_th) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/min_motion_th");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "initial_threshold", config_.initial_threshold) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/initial_threshold");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_vel_margin", config_.doppler_vel_margin) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_vel_margin");
+        }
+
+
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }
 }
@@ -220,46 +244,12 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
     o_vel_comp_radar_ptr_->points.clear();
     static_radar_ptr_->points.clear();
 
-    bool success =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
+    const auto &[frame, keypoints] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
     radar_pose_ = odometry_.poses().back();
 
-    pcl::transformPointCloud(*i_radar_struct.points, *o_cur_radar_global_ptr_,  radar_pose_ * radar_calib_pose_);
+    pcl::transformPointCloud(frame, *o_cur_radar_global_ptr_,  radar_pose_.cast<float>() * radar_calib_pose_.cast<float>());
 
-    // // Radar Vel arrow
-    // o_radar_vel_heading_markers_.markers.clear();
-
-    // //
-    // visualization_msgs::Marker est_radar_vel_heading_marker;
-    // est_radar_vel_heading_marker.header.frame_id = "afi910";
-    // est_radar_vel_heading_marker.header.stamp = ros::Time::now();
-    // est_radar_vel_heading_marker.ns = "est_radar_vel_heading";
-
-    // est_radar_vel_heading_marker.id = 1;
-    // est_radar_vel_heading_marker.type = visualization_msgs::Marker::ARROW;
-    // est_radar_vel_heading_marker.action = visualization_msgs::Marker::ADD;
-
-    // est_radar_vel_heading_marker.pose.position.x = 0.0;
-    // est_radar_vel_heading_marker.pose.position.y = 0.0;
-    // est_radar_vel_heading_marker.pose.position.z = 0.0;
-
-    // tf::Quaternion est_quat = tf::createQuaternionFromYaw(d_est_azim); // Y축 회전을 기준으로 화살표 방향 설정
-    // est_radar_vel_heading_marker.pose.orientation.x = est_quat.x();
-    // est_radar_vel_heading_marker.pose.orientation.y = est_quat.y();
-    // est_radar_vel_heading_marker.pose.orientation.z = est_quat.z();
-    // est_radar_vel_heading_marker.pose.orientation.w = est_quat.w();
-
-    // // 화살표의 크기 설정
-    // est_radar_vel_heading_marker.scale.x = abs(d_est_vel);  // 화살표의 길이
-    // est_radar_vel_heading_marker.scale.y = 0.2;  // 화살표의 샤프트 직경
-    // est_radar_vel_heading_marker.scale.z = 0.2;  // 화살표의 헤드 직경
-
-    // // 화살표의 색상 설정
-    // est_radar_vel_heading_marker.color.r = 0.0f;
-    // est_radar_vel_heading_marker.color.g = 0.5f;
-    // est_radar_vel_heading_marker.color.b = 1.0f;
-    // est_radar_vel_heading_marker.color.a = 1.0;
-
-    // o_radar_vel_heading_markers_.markers.push_back(est_radar_vel_heading_marker);
+    *o_vel_comp_radar_ptr_ = keypoints;
 }
 
 double RadarOdometryNode::GetEgoMotionCompVel(PointXYZPRVAE i_radar_point, CanStruct i_can_struct)

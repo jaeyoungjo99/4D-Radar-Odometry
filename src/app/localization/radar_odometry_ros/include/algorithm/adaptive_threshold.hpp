@@ -17,7 +17,8 @@
 #include <Eigen/Core>
 #include <utility>
 #include <vector>
-
+#include <deque>
+#include <numeric>
 
 #include "types/point_type.hpp"
 
@@ -30,7 +31,7 @@ struct AdaptiveThreshold {
           max_range_(max_range) {}
 
     /// Update the current belief of the deviation from the prediction model
-    inline void UpdateModelDeviation(const Eigen::Matrix4f &current_deviation) {
+    inline void UpdateModelDeviation(const Eigen::Matrix4d &current_deviation) {
         model_deviation_ = current_deviation;
     }
 
@@ -45,7 +46,10 @@ struct AdaptiveThreshold {
     // Local cache for ccomputation
     double model_error_sse2_ = 0;
     int num_samples_ = 0;
-    Eigen::Matrix4f model_deviation_ = Eigen::Matrix4f::Identity();
+   
+    std::deque<double> deque_model_error_sse2_;
+
+    Eigen::Matrix4d model_deviation_ = Eigen::Matrix4d::Identity();
 };
 }
 
