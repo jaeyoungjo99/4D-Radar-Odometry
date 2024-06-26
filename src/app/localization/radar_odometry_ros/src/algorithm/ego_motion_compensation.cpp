@@ -45,6 +45,43 @@ std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud,
     return inliers;
 }
 
+std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
+                                    const Velocity &predicted_vel,
+                                    float margin)
+{
+    std::vector<RadarPoint> inliers;
+    std::vector<int> vec_inliers;
+
+    Eigen::Vector3d linear_vel = predicted_vel.linear;
+    Eigen::Vector3d angular_vel = predicted_vel.angular;
+
+    double est_radar_v_x = linear_vel(0);
+    double est_radar_v_y = linear_vel(1);
+    double est_radar_v_z = linear_vel(2);
+
+    Eigen::Vector2d est_radar_vel_vec(est_radar_v_x, est_radar_v_y);
+
+    std::cout<<"Predicted est_radar_v_x: "<<est_radar_v_x <<" est_radar_v_y: "<<est_radar_v_y<<std::endl;
+
+    for (size_t i = 0; i < cloud.size(); ++i) {
+
+        float point_azim_rad = cloud[i].azi_angle * M_PI / 180.0f;
+        float point_vel = cloud[i].vel; // 전진시 대체로 음수
+        
+        Eigen::Vector2d point_azim_rad_vec(cos(point_azim_rad), sin(point_azim_rad));
+        double est_point_vel = - point_azim_rad_vec.dot(est_radar_vel_vec);
+
+        if (std::abs(est_point_vel - point_vel) <= margin) {
+            vec_inliers.push_back(i);
+        }
+    }
+
+    for (int idx : vec_inliers) {
+        inliers.push_back(cloud[idx]);
+    }
+
+    return inliers;
+}
 
 Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud)
 {
@@ -133,28 +170,67 @@ std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float mar
 }
 
 
-Eigen::Matrix4d CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
+// Eigen::Matrix4d CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
+//     // 회전 행렬 R
+//     Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
+//     // 평행 이동 벡터 t
+//     Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
+//     // 선형 속도 v (t 변화를 시간으로 나눔)
+//     Eigen::Vector3d linear_vel = translation / delta_t_sec;
+//     // 각속도 행렬 omega 계산 (logarithm map 사용)
+//     // Eigen::Matrix3d omega = rotation.log() / delta_t_sec;
+//     Eigen::Matrix3d omega = (rotation - Eigen::Matrix3d::Identity()) / delta_t_sec;
+
+//     Eigen::AngleAxisd angle_axis(rotation);
+//     Eigen::Vector3d angular_vel = angle_axis.angle() * angle_axis.axis() / delta_t_sec;
+//     double yaw_vel = angular_vel.z();
+//     std::cout<<"YAW VEL DEG: "<<yaw_vel*180/M_PI<<std::endl;
+
+//     // 속도 행렬 V를 생성
+//     Eigen::Matrix4d velocity = Eigen::Matrix4d::Zero();
+//     velocity.block<3, 3>(0, 0) = omega;
+//     velocity.block<3, 1>(0, 3) = linear_vel;
+
+//     return velocity;
+// }
+
+Velocity CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
     // 회전 행렬 R
     Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
     // 평행 이동 벡터 t
     Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
+    
     // 선형 속도 v (t 변화를 시간으로 나눔)
     Eigen::Vector3d linear_vel = translation / delta_t_sec;
+    
     // 각속도 행렬 omega 계산 (logarithm map 사용)
-    // Eigen::Matrix3d omega = rotation.log() / delta_t_sec;
-    Eigen::Matrix3d omega = (rotation - Eigen::Matrix3d::Identity()) / delta_t_sec;
-
     Eigen::AngleAxisd angle_axis(rotation);
     Eigen::Vector3d angular_vel = angle_axis.angle() * angle_axis.axis() / delta_t_sec;
-    double yaw_vel = angular_vel.z();
-    std::cout<<"YAW VEL DEG: "<<yaw_vel*180/M_PI<<std::endl;
-
-    // 속도 행렬 V를 생성
-    Eigen::Matrix4d velocity = Eigen::Matrix4d::Zero();
-    velocity.block<3, 3>(0, 0) = omega;
-    velocity.block<3, 1>(0, 3) = linear_vel;
-
+    
+    // Velocity 구조체 생성 및 반환
+    Velocity velocity;
+    velocity.linear = linear_vel;
+    velocity.angular = angular_vel;
+    
     return velocity;
+}
+
+Eigen::Matrix4d CalculateTransform(const Velocity& velocity, double delta_t_sec) {
+    // 선형 변환 계산
+    Eigen::Vector3d translation = velocity.linear * delta_t_sec;
+
+    // 각속도에서 회전 변환 계산
+    double angle = velocity.angular.norm() * delta_t_sec;
+    Eigen::Vector3d axis = velocity.angular.normalized();
+    Eigen::AngleAxisd rotation(angle, axis);
+    Eigen::Matrix3d rotation_matrix = rotation.toRotationMatrix();
+
+    // 변환 행렬 생성
+    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+    transform.block<3, 3>(0, 0) = rotation_matrix;
+    transform.block<3, 1>(0, 3) = translation;
+
+    return transform;
 }
 
 bool CheckMotionEstimation(const Eigen::Matrix4d & cv_prediction, const Eigen::Matrix4d & lsq_prediction, double delta_radar_time_sec)
@@ -201,5 +277,19 @@ bool CheckVelValidation(const Eigen::Matrix4d & est_motion)
 
     return true;
 }
+
+bool CheckVelValidation(const Velocity & est_motion)
+{
+
+    std::cout<<"ICP vx: "<<est_motion.linear.x()<<" vy: "<<est_motion.linear.y()<< " vyaw_vel deg: "<<est_motion.angular.z() * 180 / M_PI <<std::endl;
+
+    if( fabs(est_motion.angular.z()) > 20.0 * M_PI/180.0 ||
+       fabs(est_motion.linear.x()) > 50 || fabs(est_motion.linear.y()) > 50){
+        return false;
+    } 
+
+    return true;
+}
+
 
 }

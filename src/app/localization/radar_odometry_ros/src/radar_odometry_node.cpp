@@ -226,10 +226,13 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_vel_margin", config_.doppler_vel_margin) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_vel_margin");
         }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_min_point_num", config_.icp_min_point_num) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_min_point_num");
+        }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "lm_lambda", config_.lm_lambda) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/lm_lambda");
         }
-    if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_radial_uncertainty_m", config_.radar_radial_uncertainty_m) == false ) {
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_radial_uncertainty_m", config_.radar_radial_uncertainty_m) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_radial_uncertainty_m");
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_horizontal_uncertainty_deg", config_.radar_horizontal_uncertainty_deg) == false ) {
