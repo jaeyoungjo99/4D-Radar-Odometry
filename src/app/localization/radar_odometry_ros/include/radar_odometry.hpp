@@ -67,6 +67,11 @@ struct RadarOdometryConfig{
     double initial_threshold = 2.0; // p2p search distance
 
     double doppler_vel_margin = 3.0;
+
+    double lm_lambda = 0.0;
+
+    double radar_radial_uncertainty_m = 1.0;
+    double radar_horizontal_uncertainty_deg = 2.0;
 };
 
 class RadarOdometry{

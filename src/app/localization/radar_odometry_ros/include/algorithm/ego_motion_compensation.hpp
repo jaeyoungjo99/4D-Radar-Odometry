@@ -18,14 +18,23 @@
 #include <utility>
 #include <vector>
 #include <random>
+// #include <cmath>
+#include <unsupported/Eigen/MatrixFunctions>
 
 #include "types/point_type.hpp"
 
 namespace radar_odometry {
 
+struct Velocity {
+    Eigen::Vector3d linear;  // 선형 속도
+    Eigen::Vector3d angular; // 각속도
+};
+
 std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
                                                 const Eigen::Matrix4d &predicted_vel,
                                                 float margin);
+
+
 
 // Return coeff of y = c_0 * cos(x) + c_1 * sin(x)
 Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud);
@@ -35,6 +44,10 @@ Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<i
 
 // Return Ransac outlier removed pointcloud
 std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations);
+
+Eigen::Matrix4d CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec);
+bool CheckMotionEstimation(const Eigen::Matrix4d & cv_prediction, const Eigen::Matrix4d & lsq_prediction, double delta_radar_time_sec);
+bool CheckVelValidation(const Eigen::Matrix4d & est_motion);
 
 }
 

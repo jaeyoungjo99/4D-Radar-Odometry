@@ -38,25 +38,25 @@
 
 namespace radar_odometry {
 
-Eigen::Matrix4d RegisterScan2Scan3DoF(const std::vector<RadarPoint> i_cur_points,
-                                 const std::vector<RadarPoint> i_last_points,
-                                const Eigen::Matrix4d &initial_guess,
-                                const Eigen::Matrix4d &last_pose,
-                                double max_correspondence_distance,
-                                double kernel);
-
-Eigen::Matrix4d RegisterScan2Scan3DoF2(const std::vector<RadarPoint> i_cur_points,
-                                      const std::vector<RadarPoint> i_last_points,
-                                      const Eigen::Matrix4d &initial_guess,
-                                      const Eigen::Matrix4d &last_pose,
-                                      double max_correspondence_distance,
-                                      double kernel);
-
+// Using 06/26
 Eigen::Matrix4d RegisterScan2Map(const std::vector<RadarPoint> &frame,
                                     const VoxelHashMap &voxel_map,
                                     const  Eigen::Matrix4d &initial_guess,
                                     double max_correspondence_distance,
                                     double kernel);
+
+// New KISS ICP Syle
+Eigen::Matrix4d RegisterFrame(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           double max_correspondence_distance,
+                           double kernel);
+
+Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           double max_correspondence_distance,
+                           double kernel);
 
 }
 

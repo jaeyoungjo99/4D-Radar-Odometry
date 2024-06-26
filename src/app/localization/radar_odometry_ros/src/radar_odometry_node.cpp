@@ -123,7 +123,9 @@ void RadarOdometryNode::Publish()
     p_radar_vel_heading_marker_array_.publish(o_radar_vel_heading_markers_);
 
     //
-    Eigen::Matrix4d calibrated_radar_pose = radar_pose_ * radar_calib_pose_;
+    Eigen::Matrix4d calibrated_radar_pose = radar_pose_;
+// Eigen::Matrix4d calibrated_radar_pose = radar_pose_ * radar_calib_pose_;
+
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time::now();
     odom.header.frame_id = "world";
@@ -224,7 +226,15 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_vel_margin", config_.doppler_vel_margin) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_vel_margin");
         }
-
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "lm_lambda", config_.lm_lambda) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/lm_lambda");
+        }
+    if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_radial_uncertainty_m", config_.radar_radial_uncertainty_m) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_radial_uncertainty_m");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_horizontal_uncertainty_deg", config_.radar_horizontal_uncertainty_deg) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_horizontal_uncertainty_deg");
+        }
 
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }
