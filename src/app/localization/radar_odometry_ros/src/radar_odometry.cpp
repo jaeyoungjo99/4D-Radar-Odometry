@@ -153,28 +153,35 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
             //                             3.0 * sigma, sigma / 3.0); 
 
             if(config_.icp_3dof == true){
-                // new_pose = RegisterFrame3DoF(ransac_radar_points, 
-                //                             local_map_,
-                //                             last_pose * lsq_prediction, 
-                //                             3.0 * sigma, sigma / 3.0); 
 
+                if(config_.icp_doppler == true){
                 new_pose = RegisterFrameDoppler3DoF(ransac_radar_points, 
                                             local_map_,
                                             last_pose * lsq_prediction, 
                                             last_pose,
                                             3.0 * sigma, sigma / 3.0); 
+                }
+                else{
+                new_pose = RegisterFrame3DoF(ransac_radar_points, 
+                                            local_map_,
+                                            last_pose * lsq_prediction, 
+                                            3.0 * sigma, sigma / 3.0); 
+                }
             }
-            else{
-                // new_pose = RegisterFrame(ransac_radar_points, 
-                //                             local_map_,
-                //                             last_pose * lsq_prediction, 
-                //                             3.0 * sigma, sigma / 3.0); 
-
-                new_pose = RegisterFrameDoppler(ransac_radar_points, 
+            else{ // icp_3dof == false
+                if(config_.icp_doppler == true){
+                    new_pose = RegisterFrameDoppler(ransac_radar_points, 
+                                                    local_map_,
+                                                    last_pose * lsq_prediction,
+                                                    last_pose,
+                                                    3.0 * sigma, sigma / 3.0); 
+                }
+                else{
+                    new_pose = RegisterFrame(ransac_radar_points, 
                                                 local_map_,
-                                                last_pose * lsq_prediction,
-                                                CalculateVelocity(lsq_prediction, d_delta_radar_time_sec),
+                                                last_pose * lsq_prediction, 
                                                 3.0 * sigma, sigma / 3.0); 
+                }
             }
 
             std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
