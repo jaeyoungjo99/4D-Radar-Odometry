@@ -107,6 +107,9 @@ void VoxelHashMap::Update(const RadarPointVector &points, const Eigen::Matrix4d 
 
 
 void VoxelHashMap::AddPoints(const RadarPointVector &points) {
+    if(points.size() == 0)
+        return;
+
     std::for_each(points.cbegin(), points.cend(), [&](const auto &point) { // point = RadarPoint
         // auto voxel = (point.pose / voxel_size_).cast<int>();
         auto voxel = Voxel((point.pose / voxel_size_).template cast<int>());

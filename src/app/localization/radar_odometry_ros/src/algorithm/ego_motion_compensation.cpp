@@ -194,44 +194,6 @@ std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float mar
 //     return velocity;
 // }
 
-Velocity CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
-    // 회전 행렬 R
-    Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
-    // 평행 이동 벡터 t
-    Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
-    
-    // 선형 속도 v (t 변화를 시간으로 나눔)
-    Eigen::Vector3d linear_vel = translation / delta_t_sec;
-    
-    // 각속도 행렬 omega 계산 (logarithm map 사용)
-    Eigen::AngleAxisd angle_axis(rotation);
-    Eigen::Vector3d angular_vel = angle_axis.angle() * angle_axis.axis() / delta_t_sec;
-    
-    // Velocity 구조체 생성 및 반환
-    Velocity velocity;
-    velocity.linear = linear_vel;
-    velocity.angular = angular_vel;
-    
-    return velocity;
-}
-
-Eigen::Matrix4d CalculateTransform(const Velocity& velocity, double delta_t_sec) {
-    // 선형 변환 계산
-    Eigen::Vector3d translation = velocity.linear * delta_t_sec;
-
-    // 각속도에서 회전 변환 계산
-    double angle = velocity.angular.norm() * delta_t_sec;
-    Eigen::Vector3d axis = velocity.angular.normalized();
-    Eigen::AngleAxisd rotation(angle, axis);
-    Eigen::Matrix3d rotation_matrix = rotation.toRotationMatrix();
-
-    // 변환 행렬 생성
-    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
-    transform.block<3, 3>(0, 0) = rotation_matrix;
-    transform.block<3, 1>(0, 3) = translation;
-
-    return transform;
-}
 
 bool CheckMotionEstimation(const Eigen::Matrix4d & cv_prediction, const Eigen::Matrix4d & lsq_prediction, double delta_radar_time_sec)
 {

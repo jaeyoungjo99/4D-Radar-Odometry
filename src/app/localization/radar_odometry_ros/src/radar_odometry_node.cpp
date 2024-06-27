@@ -226,6 +226,9 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_vel_margin", config_.doppler_vel_margin) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_vel_margin");
         }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_3dof", config_.icp_3dof) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_3dof");
+        }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_min_point_num", config_.icp_min_point_num) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_min_point_num");
         }
@@ -238,6 +241,8 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_horizontal_uncertainty_deg", config_.radar_horizontal_uncertainty_deg) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_horizontal_uncertainty_deg");
         }
+
+        std::cout<<"icp_3dof: "<<config_.icp_3dof<<std::endl;
 
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }

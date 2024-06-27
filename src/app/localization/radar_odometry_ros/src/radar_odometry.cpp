@@ -30,7 +30,6 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
     // cv_prediction 는 지난 pose 기준 상대좌표
     Eigen::Matrix4d cv_prediction = GetPredictionModel(i_radar_timestamp_sec); // if poses < 2, return identity
-    // Eigen::Matrix4d cv_prediction = GetPredictionModel(); // if poses < 2, return identity
     Eigen::Matrix4d last_pose = !poses_.empty() ? poses_.back() : Eigen::Matrix4d::Identity();
 
     Eigen::Matrix4d initial_guess = last_pose * cv_prediction; // CV 모델 예측 결과 global 좌표
@@ -43,20 +42,14 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         std::cout<<"Origin Point Num: "<<cropped_frame.size()<<std::endl;
 
         // 1. Points Preprocessing based on CV model
-
-        // Eigen::Matrix4d predicted_vel;
         Velocity predicted_vel;
 
         if(poses_.size() < 2){ // Prediction is not completed
-            // predicted_vel = Eigen::Matrix4d::Identity();
             vel_filtered_radar_points = cropped_frame;
         }
         else{
             
             predicted_vel = CalculateVelocity(cv_prediction, i_radar_timestamp_sec - times_.back());
-            // Eigen::Matrix4d test_vel_mat = CalculateVelocity(cv_prediction, i_radar_timestamp_sec - times_.back());
-
-            // predicted_vel = cv_prediction / (i_radar_timestamp_sec - times_.back());
             vel_filtered_radar_points = VelFiltering(cropped_frame, predicted_vel, config_.doppler_vel_margin);
 
             if(vel_filtered_radar_points.size() < config_.icp_min_point_num){
@@ -67,10 +60,10 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
                 vel_filtered_radar_points = RansacFit(cropped_frame, 1, 100); // margin, max_iter
                 if( (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() > 0.8 ){
                     // 80% 이상이 인라이어
-                    ROS_INFO_STREAM("RANSAC INLIER Percent" << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
+                    ROS_INFO_STREAM("RANSAC INLIER Percent " << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
                 }
                 else{
-                    ROS_WARN_STREAM("RANSAC INLIER Percent" << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
+                    ROS_WARN_STREAM("RANSAC INLIER Percent " << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
                     b_is_fitting_failed = true;
                     vel_filtered_radar_points = cropped_frame;
                 }
@@ -86,7 +79,6 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         std::cout<<"Vel Filtered Point Num: "<<vel_filtered_radar_points.size()<<std::endl;
 
         // 2. RANSAC Outlier Removal
-        
         if(b_is_fitting_failed == false){
             ransac_radar_points = RansacFit(vel_filtered_radar_points, 1, 100); // margin, max_iter
             std::cout<<"Ransac Filtered Point Num: "<<ransac_radar_points.size()<<std::endl;
@@ -123,12 +115,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
             lsq_prediction(1, 3) = radar_dy;
 
             std::cout<<"LSQ radar_dx: "<<radar_dx <<" dy: "<<radar_dy<< " dyaw deg: "<<radar_dyaw*180/M_PI<<std::endl;
-
-            // if(CheckVelValidation( lsq_prediction / d_delta_radar_time_sec) == false){
-            //     // std::cout<<"LSQ Motion Deviate!!!! USE PREDICTION"<<std::endl;
-            //     ROS_WARN_STREAM("LSQ Motion Deviate!!!! USE PREDICTION");
-            //     lsq_prediction = cv_prediction;        
-            // }
+    
 
             if(CheckVelValidation( CalculateVelocity(lsq_prediction , d_delta_radar_time_sec)) == false){
                 // std::cout<<"LSQ Motion Deviate!!!! USE PREDICTION"<<std::endl;
@@ -165,16 +152,30 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
             //                             last_pose * lsq_prediction, 
             //                             3.0 * sigma, sigma / 3.0); 
 
-            // KISS Style
-            // new_pose = RegisterFrame(ransac_radar_points, 
-            //                             local_map_,
-            //                             last_pose * lsq_prediction, 
-            //                             3.0 * sigma, sigma / 3.0); 
+            if(config_.icp_3dof == true){
+                // new_pose = RegisterFrame3DoF(ransac_radar_points, 
+                //                             local_map_,
+                //                             last_pose * lsq_prediction, 
+                //                             3.0 * sigma, sigma / 3.0); 
 
-            new_pose = RegisterFrame3DoF(ransac_radar_points, 
-                                        local_map_,
-                                        last_pose * lsq_prediction, 
-                                        3.0 * sigma, sigma / 3.0); 
+                new_pose = RegisterFrameDoppler3DoF(ransac_radar_points, 
+                                            local_map_,
+                                            last_pose * lsq_prediction, 
+                                            last_pose,
+                                            3.0 * sigma, sigma / 3.0); 
+            }
+            else{
+                // new_pose = RegisterFrame(ransac_radar_points, 
+                //                             local_map_,
+                //                             last_pose * lsq_prediction, 
+                //                             3.0 * sigma, sigma / 3.0); 
+
+                new_pose = RegisterFrameDoppler(ransac_radar_points, 
+                                                local_map_,
+                                                last_pose * lsq_prediction,
+                                                CalculateVelocity(lsq_prediction, d_delta_radar_time_sec),
+                                                3.0 * sigma, sigma / 3.0); 
+            }
 
             std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 
@@ -183,21 +184,19 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
                 ROS_WARN_STREAM("ICP Motion Deviate!!!! USE LSQ PREDICTION");
                 new_pose = last_pose * lsq_prediction;
             }
-            // if(CheckVelValidation( (last_pose.inverse() * new_pose)/ d_delta_radar_time_sec) == false){
-            //     // std::cout<<"ICP Motion Deviate!!!! USE LSQ PREDICTION"<<std::endl;
-            //     ROS_WARN_STREAM("ICP Motion Deviate!!!! USE LSQ PREDICTION");
-            //     new_pose = last_pose * lsq_prediction;
-            // }
 
             std::chrono::duration<double>registration_time_sec = std::chrono::system_clock::now() - registration_start_time_sec;
             std::cout<<"Registration Time sec: " << registration_time_sec.count() << std::endl;
         }
 
-
         // End
         Eigen::Matrix4d model_deviation = (last_pose * lsq_prediction).inverse() * new_pose;
         adaptive_threshold_.UpdateModelDeviation(model_deviation);
-        local_map_.Update(ransac_radar_points, new_pose);
+
+        // Vel fitting 실패시, 동적 포인트가 맵에 누적되는것 방지
+        if(b_is_fitting_failed == false)
+            local_map_.Update(ransac_radar_points, new_pose);
+
         poses_.push_back(new_pose);
         times_.push_back(i_radar_timestamp_sec);
 
@@ -277,40 +276,6 @@ Eigen::Matrix4d RadarOdometry::GetPredictionModel(double cur_timestamp) const {
 
     return pred;
 }
-
-// Eigen::Matrix4d PredictCurrentTransform(const Eigen::Matrix4d& poses_[N - 2],
-//                                         const Eigen::Matrix4d& poses_[N - 1],
-//                                         double last_dt,
-//                                         double cur_dt) {
-//     // Calculate velocity based on T-2 and T-1 transforms
-//     Eigen::Matrix3d rotation_T_minus_2 = poses_[N - 2].block<3, 3>(0, 0);
-//     Eigen::Vector3d translation_T_minus_2 = poses_[N - 2].block<3, 1>(0, 3);
-
-//     Eigen::Matrix3d rotation_T_minus_1 = poses_[N - 1].block<3, 3>(0, 0);
-//     Eigen::Vector3d translation_T_minus_1 = poses_[N - 1].block<3, 1>(0, 3);
-
-//     // Linear velocity
-//     Eigen::Vector3d linear_velocity = (translation_T_minus_1 - translation_T_minus_2) / last_dt;
-
-//     // Angular velocity
-//     Eigen::Matrix3d rotation_change = rotation_T_minus_1 * rotation_T_minus_2.transpose();
-//     Eigen::AngleAxisd angle_axis(rotation_change);
-//     Eigen::Vector3d angular_velocity = angle_axis.angle() * angle_axis.axis() / last_dt;
-
-//     // Predict the next translation
-//     Eigen::Vector3d predicted_translation = translation_T_minus_1 + linear_velocity * cur_dt;
-
-//     // Predict the next rotation
-//     Eigen::AngleAxisd predicted_angle_axis(angular_velocity.norm() * cur_dt, angular_velocity.normalized());
-//     Eigen::Matrix3d predicted_rotation = predicted_angle_axis.toRotationMatrix() * rotation_T_minus_1;
-
-//     // Form the predicted transform
-//     Eigen::Matrix4d predicted_transform = Eigen::Matrix4d::Identity();
-//     predicted_transform.block<3, 3>(0, 0) = predicted_rotation;
-//     predicted_transform.block<3, 1>(0, 3) = predicted_translation;
-
-//     return predicted_transform;
-// }
 
 Eigen::Matrix4d calculateDisplacement(const Eigen::Matrix4d& V, double delta_t_sec) {
     // 각속도 행렬 Omega (3x3 스큐대칭 행렬)

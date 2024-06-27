@@ -1,5 +1,6 @@
 #ifndef __POINTTYPE_HPP__
 #define __POINTTYPE_HPP__
+#pragma once
 
 // PCL
 #include <pcl/point_types.h>
@@ -70,14 +71,14 @@ struct RadarPoint {
     double azi_angle;
     double ele_angle;
 
-    int frame_ind;
+    int frame_idx;
     double timestamp;
 
     // 생성자
     RadarPoint()
         : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix3d::Identity()), power(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
-          frame_ind(0), timestamp(0.0) {}
+          frame_idx(0), timestamp(0.0) {}
 
     ~RadarPoint(){
     };
@@ -91,10 +92,62 @@ struct RadarPoint {
         vel = 0.0;
         azi_angle = 0.0;
         ele_angle = 0.0;
-        frame_ind = 0;
+        frame_idx = 0;
         timestamp = 0.0;
     }
 };
+
+struct Velocity {
+    Eigen::Vector3d linear;  // 선형 속도
+    Eigen::Vector3d angular; // 각속도
+
+    // 기본 생성자Q - 멤버 변수를 0으로 초기화
+    Velocity()
+        : linear(Eigen::Vector3d::Zero()), angular(Eigen::Vector3d::Zero()) {}
+
+    // 매개변수를 받아서 초기화하는 생성자
+    Velocity(const Eigen::Vector3d& lin, const Eigen::Vector3d& ang)
+        : linear(lin), angular(ang) {}
+};
+
+inline Velocity CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
+    // 회전 행렬 R
+    Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
+    // 평행 이동 벡터 t
+    Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
+    
+    // 선형 속도 v (t 변화를 시간으로 나눔)
+    Eigen::Vector3d linear_vel = translation / delta_t_sec;
+    
+    // 각속도 행렬 omega 계산 (logarithm map 사용)
+    Eigen::AngleAxisd angle_axis(rotation);
+    Eigen::Vector3d angular_vel = angle_axis.angle() * angle_axis.axis() / delta_t_sec;
+    
+    // Velocity 구조체 생성 및 반환
+    Velocity velocity;
+    velocity.linear = linear_vel;
+    velocity.angular = angular_vel;
+    
+    return velocity;
+}
+
+inline Eigen::Matrix4d CalculateTransform(const Velocity& velocity, double delta_t_sec) {
+    // 선형 변환 계산
+    Eigen::Vector3d translation = velocity.linear * delta_t_sec;
+
+    // 각속도에서 회전 변환 계산
+    double angle = velocity.angular.norm() * delta_t_sec;
+    Eigen::Vector3d axis = velocity.angular.normalized();
+    Eigen::AngleAxisd rotation(angle, axis);
+    Eigen::Matrix3d rotation_matrix = rotation.toRotationMatrix();
+
+    // 변환 행렬 생성
+    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+    transform.block<3, 3>(0, 0) = rotation_matrix;
+    transform.block<3, 1>(0, 3) = translation;
+
+    return transform;
+}
 
 inline std::string FixFrameId(const std::string &frame_id) {
     return std::regex_replace(frame_id, std::regex("^/"), "");

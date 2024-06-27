@@ -52,9 +52,23 @@ Eigen::Matrix4d RegisterFrame(const std::vector<RadarPoint> &frame,
                            double max_correspondence_distance,
                            double kernel);
 
+Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           const Velocity &sensor_velocity,
+                           double max_correspondence_distance,
+                           double kernel);
+
 Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
                            const VoxelHashMap &voxel_map,
                            const Eigen::Matrix4d &initial_guess,
+                           double max_correspondence_distance,
+                           double kernel);
+
+Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           const Eigen::Matrix4d &last_pose,
                            double max_correspondence_distance,
                            double kernel);
 
