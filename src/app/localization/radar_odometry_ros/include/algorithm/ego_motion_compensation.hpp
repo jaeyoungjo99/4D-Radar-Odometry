@@ -18,23 +18,30 @@
 #include <utility>
 #include <vector>
 #include <random>
+// #include <cmath>
+#include <unsupported/Eigen/MatrixFunctions>
 
 #include "types/point_type.hpp"
 
 namespace radar_odometry {
 
-pcl::PointCloud<PointXYZPRVAE>::Ptr VelFiltering(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, 
-                                                const Eigen::Matrix4d &predicted_vel,
+std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
+                                                const Velocity &predicted_vel,
                                                 float margin);
 
 // Return coeff of y = c_0 * cos(x) + c_1 * sin(x)
-Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud);
+Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud);
 
 // Return coeff of y = c_0 * cos(x) + c_1 * sin(x)
-Eigen::Vector2d FitSine(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, const std::vector<int>& indices);
+Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<int>& indices);
 
 // Return Ransac outlier removed pointcloud
-pcl::PointCloud<PointXYZPRVAE>::Ptr RansacFit(const pcl::PointCloud<PointXYZPRVAE>::Ptr& cloud, float margin, int max_iterations);
+std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations);
+
+Velocity EgoMotionEstimation(const std::vector<RadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad);
+
+bool CheckVelValidation(const Eigen::Matrix4d & est_motion);
+bool CheckVelValidation(const Velocity & est_motion);
 
 }
 

@@ -16,7 +16,9 @@
 
 #include <Eigen/Core>
 #include <utility>
+#include <tuple>
 #include <vector>
+#include <unordered_map>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -36,8 +38,51 @@
 #include "types/point_type.hpp"
 
 namespace radar_odometry {
+struct VoxelHashMap{
 
+    using RadarPointVector = std::vector<RadarPoint>;
+    using RadarPointVectorTuple = std::tuple<RadarPointVector, RadarPointVector>;
+    using Voxel = Eigen::Vector3i;
 
+    struct VoxelBlock {
+        // buffer of points with a max limit of n_points
+        std::vector<RadarPoint> points;
+        int num_points_;
+        inline void AddPoint(const RadarPoint &point) {
+            if (points.size() < static_cast<size_t>(num_points_)) points.push_back(point);
+        }
+    };
+    struct VoxelHash {
+        size_t operator()(const Voxel &voxel) const {
+            const uint32_t *vec = reinterpret_cast<const uint32_t *>(voxel.data());
+            return ((1 << 20) - 1) & (vec[0] * 73856093 ^ vec[1] * 19349669 ^ vec[2] * 83492791);
+        }
+    };
+
+    explicit VoxelHashMap(double voxel_size, double max_distance, int max_points_per_voxel, int local_map_time_th)
+        : voxel_size_(voxel_size),
+          max_distance_(max_distance),
+          max_points_per_voxel_(max_points_per_voxel),
+          local_map_time_th_(local_map_time_th) {}
+
+    RadarPointVectorTuple GetCorrespondences(const RadarPointVector &points,
+                                             double max_correspondance_distance) const;
+    inline void Clear() { map_.clear(); }
+    inline bool Empty() const { return map_.empty(); }
+    void Update(const RadarPointVector &points, const Eigen::Vector3d &origin); // 여기서 Eigen::Vector3d 는 그냥 sensor translation
+    void Update(const RadarPointVector &points, const Eigen::Matrix4d &pose);
+    void AddPoints(const RadarPointVector &points);
+    void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
+    void RemovePointsFarfromTime(const double cur_timestamp);
+    std::vector<RadarPoint> Pointcloud() const;
+
+    double voxel_size_;
+    double max_distance_;
+    int max_points_per_voxel_;
+    double local_map_time_th_;
+    std::unordered_map<Voxel, VoxelBlock, VoxelHash> map_; 
+
+};
 }
 
 #endif  // __VOXEL_HASH_MAP_HPP__

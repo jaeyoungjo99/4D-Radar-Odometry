@@ -87,6 +87,7 @@ add_executable(${PROJECT_NAME}
     src/radar_odometry.cpp
     src/algorithm/adaptive_threshold.cpp
     src/algorithm/ego_motion_compensation.cpp
+    src/algorithm/preprocessing.cpp
     src/algorithm/registration.cpp
     src/algorithm/voxel_hash_map.cpp
 )

@@ -17,6 +17,7 @@
 #include <Eigen/Core>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -34,22 +35,41 @@
 #include <pcl/kdtree/kdtree_flann.h>
 
 #include "types/point_type.hpp"
+#include "algorithm/voxel_hash_map.hpp"
 
 namespace radar_odometry {
 
-Eigen::Matrix4d RegisterScan2Scan3DoF(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                 const pcl::PointCloud<PointXYZPRVAE> i_last_points,
-                                const Eigen::Matrix4d &initial_guess,
-                                const Eigen::Matrix4d &last_pose,
-                                double max_correspondence_distance,
-                                double kernel);
+// New KISS ICP Syle
+Eigen::Matrix4d RegisterFrame(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           double max_correspondence_distance,
+                           double kernel);
 
-Eigen::Matrix4d RegisterScan2Scan3DoF2(const pcl::PointCloud<PointXYZPRVAE> i_cur_points,
-                                      const pcl::PointCloud<PointXYZPRVAE> i_last_points,
-                                      const Eigen::Matrix4d &initial_guess,
-                                      const Eigen::Matrix4d &last_pose,
-                                      double max_correspondence_distance,
-                                      double kernel);
+Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           const Eigen::Matrix4d &last_pose,
+                           double max_correspondence_distance,
+                           double kernel,
+                           double doppler_gm_th,
+                           double doppler_trans_lambda);
+
+Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           double max_correspondence_distance,
+                           double kernel);
+
+Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
+                           const VoxelHashMap &voxel_map,
+                           const Eigen::Matrix4d &initial_guess,
+                           const Eigen::Matrix4d &last_pose,
+                           double max_correspondence_distance,
+                           double kernel,
+                           double doppler_gm_th,
+                           double doppler_trans_lambda);
+
 }
 
 #endif  // __REGISTRATION_HPP__
