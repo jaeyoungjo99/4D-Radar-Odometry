@@ -8,44 +8,6 @@ namespace{
 namespace radar_odometry {
 
 std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
-                                    const Eigen::Matrix4d &predicted_vel,
-                                    float margin)
-{
-    std::vector<RadarPoint> inliers;
-    std::vector<int> vec_inliers;
-
-    Eigen::Vector3d linear_vel = predicted_vel.block<3,1>(0, 3);
-    Eigen::Matrix3d angular_vel = predicted_vel.block<3,3>(0, 0);
-
-    double est_radar_v_x = linear_vel(0);
-    double est_radar_v_y = linear_vel(1);
-    double est_radar_v_z = linear_vel(2);
-
-    Eigen::Vector2d est_radar_vel_vec(est_radar_v_x, est_radar_v_y);
-
-    std::cout<<"Predicted est_radar_v_x: "<<est_radar_v_x <<" est_radar_v_y: "<<est_radar_v_y<<std::endl;
-
-    for (size_t i = 0; i < cloud.size(); ++i) {
-
-        float point_azim_rad = cloud[i].azi_angle * M_PI / 180.0f;
-        float point_vel = cloud[i].vel; // 전진시 대체로 음수
-        
-        Eigen::Vector2d point_azim_rad_vec(cos(point_azim_rad), sin(point_azim_rad));
-        double est_point_vel = - point_azim_rad_vec.dot(est_radar_vel_vec);
-
-        if (std::abs(est_point_vel - point_vel) <= margin) {
-            vec_inliers.push_back(i);
-        }
-    }
-
-    for (int idx : vec_inliers) {
-        inliers.push_back(cloud[idx]);
-    }
-
-    return inliers;
-}
-
-std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
                                     const Velocity &predicted_vel,
                                     float margin)
 {
@@ -55,23 +17,19 @@ std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud,
     Eigen::Vector3d linear_vel = predicted_vel.linear;
     Eigen::Vector3d angular_vel = predicted_vel.angular;
 
-    double est_radar_v_x = linear_vel(0);
-    double est_radar_v_y = linear_vel(1);
-    double est_radar_v_z = linear_vel(2);
+    Eigen::Vector3d ego_to_sensor_translation(3.5, 0.0, 0.5);
 
-    Eigen::Vector2d est_radar_vel_vec(est_radar_v_x, est_radar_v_y);
+    for (size_t i = 0; i < cloud.size(); ++i){
+        const double p_azim_rad = cloud[i].azi_angle * M_PI / 180.0f; // 정면 0 반시계
+        const double p_ele_rad = cloud[i].ele_angle * M_PI / 180.0f; // 정면 0 윗방향
 
-    std::cout<<"Predicted est_radar_v_x: "<<est_radar_v_x <<" est_radar_v_y: "<<est_radar_v_y<<std::endl;
-
-    for (size_t i = 0; i < cloud.size(); ++i) {
-
-        float point_azim_rad = cloud[i].azi_angle * M_PI / 180.0f;
-        float point_vel = cloud[i].vel; // 전진시 대체로 음수
+        Eigen::Vector3d point_direction_vector(cos(p_ele_rad) * cos(p_azim_rad),
+                                         cos(p_ele_rad) * sin(p_azim_rad), 
+                                         sin(p_ele_rad));
         
-        Eigen::Vector2d point_azim_rad_vec(cos(point_azim_rad), sin(point_azim_rad));
-        double est_point_vel = - point_azim_rad_vec.dot(est_radar_vel_vec);
+        double vel_predict = - point_direction_vector.dot(linear_vel + angular_vel.cross(ego_to_sensor_translation));
 
-        if (std::abs(est_point_vel - point_vel) <= margin) {
+        if (std::abs(vel_predict - cloud[i].vel) <= margin) {
             vec_inliers.push_back(i);
         }
     }
@@ -83,6 +41,7 @@ std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud,
     return inliers;
 }
 
+// v = v_x * cos(azim) + v_y * sin(azim)
 Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud)
 {
     Eigen::MatrixXd A(cloud.size(), 2);
@@ -169,51 +128,31 @@ std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float mar
     return inliers;
 }
 
-
-// Eigen::Matrix4d CalculateVelocity(const Eigen::Matrix4d& transform, double delta_t_sec) {
-//     // 회전 행렬 R
-//     Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
-//     // 평행 이동 벡터 t
-//     Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
-//     // 선형 속도 v (t 변화를 시간으로 나눔)
-//     Eigen::Vector3d linear_vel = translation / delta_t_sec;
-//     // 각속도 행렬 omega 계산 (logarithm map 사용)
-//     // Eigen::Matrix3d omega = rotation.log() / delta_t_sec;
-//     Eigen::Matrix3d omega = (rotation - Eigen::Matrix3d::Identity()) / delta_t_sec;
-
-//     Eigen::AngleAxisd angle_axis(rotation);
-//     Eigen::Vector3d angular_vel = angle_axis.angle() * angle_axis.axis() / delta_t_sec;
-//     double yaw_vel = angular_vel.z();
-//     std::cout<<"YAW VEL DEG: "<<yaw_vel*180/M_PI<<std::endl;
-
-//     // 속도 행렬 V를 생성
-//     Eigen::Matrix4d velocity = Eigen::Matrix4d::Zero();
-//     velocity.block<3, 3>(0, 0) = omega;
-//     velocity.block<3, 1>(0, 3) = linear_vel;
-
-//     return velocity;
-// }
-
-
-bool CheckMotionEstimation(const Eigen::Matrix4d & cv_prediction, const Eigen::Matrix4d & lsq_prediction, double delta_radar_time_sec)
+Velocity EgoMotionEstimation(const std::vector<RadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad)
 {
+    // v = v_x * cos(azim) + v_y * sin(azim)
+    Eigen::Vector2d est_coeff = FitSine(cloud);
+    double d_est_azim = atan2(est_coeff[1], est_coeff[0]);
+    double d_est_vel = sqrt(est_coeff[0]*est_coeff[0] + est_coeff[1]*est_coeff[1]);
+    
+    Eigen::Vector2d est_azim_rad_vec(cos(d_est_azim), sin(d_est_azim));
+    Eigen::Vector2d est_vel_vec( est_coeff[0],  est_coeff[1]);
 
-    Eigen::Vector3d lsq_linear = lsq_prediction.block<3,1>(0, 3);
-    Eigen::Matrix3d lsq_angular = lsq_prediction.block<3,3>(0, 0);
+    //
+    // v = (cos(alpha + beta) = b/l sin(alpha + beta)) v_s
+    double alpha = atan2(est_coeff[1], est_coeff[0]);
+    double v_s = sqrt(est_coeff[0]*est_coeff[0] + est_coeff[1]*est_coeff[1]);
+    double v_yaw = sin(alpha + ego_to_radar_yaw_rad) * d_est_vel / ego_to_radar_x_m;
 
-    double lsq_v_x = lsq_linear(0) / delta_radar_time_sec;
-    double lsq_v_y = lsq_linear(1) / delta_radar_time_sec;
+    Velocity estimated_velocity;
+    estimated_velocity.linear.x() = est_coeff[0];
+    estimated_velocity.linear.y() = est_coeff[1];
 
+    estimated_velocity.angular.z() = v_yaw;
 
-    double lsq_dyaw = std::atan2(lsq_angular(1, 0), lsq_angular(0, 0));
-
-    if( fabs(lsq_dyaw / delta_radar_time_sec) > 20.0 * M_PI/180.0 ||
-       fabs(lsq_v_x) > 50 || fabs(lsq_v_y) > 50){
-        return false;
-    } 
-
-    return true;
+    return estimated_velocity;
 }
+
 
 bool CheckVelValidation(const Eigen::Matrix4d & est_motion)
 {

@@ -101,9 +101,11 @@ struct Velocity {
     Eigen::Vector3d linear;  // 선형 속도
     Eigen::Vector3d angular; // 각속도
 
+    double time_diff_sec;
+
     // 기본 생성자Q - 멤버 변수를 0으로 초기화
     Velocity()
-        : linear(Eigen::Vector3d::Zero()), angular(Eigen::Vector3d::Zero()) {}
+        : linear(Eigen::Vector3d::Zero()), angular(Eigen::Vector3d::Zero()), time_diff_sec(0.1) {}
 
     // 매개변수를 받아서 초기화하는 생성자
     Velocity(const Eigen::Vector3d& lin, const Eigen::Vector3d& ang)
@@ -127,6 +129,7 @@ inline Velocity CalculateVelocity(const Eigen::Matrix4d& transform, double delta
     Velocity velocity;
     velocity.linear = linear_vel;
     velocity.angular = angular_vel;
+    velocity.time_diff_sec = delta_t_sec;
     
     return velocity;
 }

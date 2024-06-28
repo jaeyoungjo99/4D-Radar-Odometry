@@ -198,9 +198,6 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_delay_sec", cfg_d_radar_delay_sec_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_delay_sec_");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "max_distance_m", cfg_d_max_distance_m_) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/max_distance_m");
-        }
 
         if ( v_ini_parser_.ParseConfig("radar_odometry", "voxel_size", config_.voxel_size) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/voxel_size");
@@ -231,6 +228,12 @@ void RadarOdometryNode::ProcessINI()
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_doppler", config_.icp_doppler) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_doppler");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_gm_th", config_.doppler_gm_th) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_gm_th");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_trans_lambda", config_.doppler_trans_lambda) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_trans_lambda");
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_min_point_num", config_.icp_min_point_num) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_min_point_num");

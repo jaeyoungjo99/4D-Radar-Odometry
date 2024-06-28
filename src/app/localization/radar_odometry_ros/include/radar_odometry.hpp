@@ -70,6 +70,8 @@ struct RadarOdometryConfig{
 
     bool icp_3dof = true;
     bool icp_doppler = true;
+    double doppler_gm_th = 0.5;
+    double doppler_trans_lambda = 0.5;
     int icp_min_point_num = 10;
     double lm_lambda = 0.0;
 

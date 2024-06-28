@@ -26,10 +26,6 @@
 namespace radar_odometry {
 
 std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
-                                                const Eigen::Matrix4d &predicted_vel,
-                                                float margin);
-
-std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
                                                 const Velocity &predicted_vel,
                                                 float margin);
 
@@ -42,9 +38,8 @@ Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<i
 // Return Ransac outlier removed pointcloud
 std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations);
 
+Velocity EgoMotionEstimation(const std::vector<RadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad);
 
-
-bool CheckMotionEstimation(const Eigen::Matrix4d & cv_prediction, const Eigen::Matrix4d & lsq_prediction, double delta_radar_time_sec);
 bool CheckVelValidation(const Eigen::Matrix4d & est_motion);
 bool CheckVelValidation(const Velocity & est_motion);
 

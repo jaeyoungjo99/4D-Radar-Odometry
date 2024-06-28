@@ -17,6 +17,7 @@
 #include <Eigen/Core>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -50,7 +51,9 @@ Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
                            const Eigen::Matrix4d &initial_guess,
                            const Eigen::Matrix4d &last_pose,
                            double max_correspondence_distance,
-                           double kernel);
+                           double kernel,
+                           double doppler_gm_th,
+                           double doppler_trans_lambda);
 
 Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
                            const VoxelHashMap &voxel_map,
@@ -63,7 +66,9 @@ Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
                            const Eigen::Matrix4d &initial_guess,
                            const Eigen::Matrix4d &last_pose,
                            double max_correspondence_distance,
-                           double kernel);
+                           double kernel,
+                           double doppler_gm_th,
+                           double doppler_trans_lambda);
 
 }
 

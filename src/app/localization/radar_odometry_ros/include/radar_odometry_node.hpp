@@ -250,8 +250,6 @@ class RadarOdometryNode : public AtomTask {
         double cfg_d_ego_to_radar_yaw_deg_;
         double cfg_d_radar_delay_sec_; 
 
-        double cfg_d_max_distance_m_;
-
         radar_odometry::pipeline::RadarOdometry odometry_;
         radar_odometry::pipeline::RadarOdometryConfig config_;
         
