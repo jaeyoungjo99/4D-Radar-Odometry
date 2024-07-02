@@ -223,22 +223,27 @@ Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
     Eigen::Vector3d JTr = Eigen::Vector3d::Zero();
 
     for (size_t i = 0; i < source.size(); ++i) {
-        const Eigen::Vector2d residual(source[i].pose.x() - target[i].pose.x(), source[i].pose.y() - target[i].pose.y());
+        const Eigen::Vector2d residual(target[i].pose.x() - source[i].pose.x(), target[i].pose.y() - source[i].pose.y());
         Eigen::Matrix2_3d J_r;
 
         if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
+        
+        double range_weight =  std::max(0.0, 1.0 - source[i].range * target[i].range / square(150.0));
 
         // [ I(2x2), -(T p_k)^ ]
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
         J_r.block<2, 1>(0, 2) << -source[i].pose(1), source[i].pose(0);
 
-        double weight = square(th) / square(th + residual.squaredNorm());
+        double weight = square(th) / square(th + residual.squaredNorm()) * range_weight;
 
         JTJ.noalias() += J_r.transpose() * weight * J_r;
         JTr.noalias() += J_r.transpose() * weight * residual;
     }
 
-    const Eigen::Vector3d x = JTJ.ldlt().solve(-JTr);
+    // const Eigen::Vector3d x = JTJ.ldlt().solve(JTr);
+
+    Eigen::Matrix3d JTJ_diag = JTJ.diagonal().asDiagonal();
+    const Eigen::Vector3d x = (JTJ + 0.0 * JTJ_diag).ldlt().solve(JTr);
 
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
     transformation.block<2, 2>(0, 0) = Eigen::Rotation2Dd(x(2)).toRotationMatrix();
@@ -274,13 +279,15 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
         Eigen::Matrix2_3d J_r;
 
         if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
+
+        double range_weight =  std::max(0.0, 1.0 - source[i].range * target[i].range / square(150.0));
         
         // 1. Translation
         // [ I(3x3), -(T p_k)^ ]
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
         J_r.block<2, 1>(0, 2) << -source[i].pose(1), source[i].pose(0);
 
-        double weight_t = square(th) / square(th + residual.squaredNorm());
+        double weight_t = square(th) / square(th + residual.squaredNorm()) * range_weight;
 
         JTJ.noalias() += J_r.transpose() * weight_t * J_r;
         JTr.noalias() += J_r.transpose() * weight_t * residual;
@@ -306,7 +313,7 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
         J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / 0.1;
         J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - point_direction_vector.y() * ego_to_sensor_translation.x()) / 0.1;
 
-        double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual));
+        double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual)) * range_weight;
 
         JvTJv.noalias() += J_v.transpose() * weight_v * J_v; // 3x1 1x3
         JvTrv.noalias() += J_v.transpose() * weight_v * vel_residual; // 3x1 1x1
@@ -336,15 +343,6 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
     const Eigen::Vector3d x_v = JvTJv.ldlt().solve(JvTrv);
     // const Eigen::Vector3d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
     const Eigen::Vector3d x_tot = (JTJ_tot + 0.0 * JTJ_tot_diag).ldlt().solve(JTr_tot);
-
-    // std::cout<<"x_t"<<std::endl;
-    // std::cout<<x_t.transpose()<<std::endl;
-
-    // std::cout<<"x_v"<<std::endl;
-    // std::cout<<x_v.transpose()<<std::endl;
-
-    // std::cout<<"x_tot"<<std::endl;
-    // std::cout<<x_tot.transpose()<<std::endl;
 
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
 

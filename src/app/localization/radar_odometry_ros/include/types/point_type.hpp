@@ -63,7 +63,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT( PointXYZPRVAE,
 
 struct RadarPoint {
     Eigen::Vector3d pose;
-    Eigen::Matrix3d cov;
+    Eigen::Matrix4d cov;
 
     double power;
     double range;
@@ -76,7 +76,7 @@ struct RadarPoint {
 
     // 생성자
     RadarPoint()
-        : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix3d::Identity()), power(0.0),
+        : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()), power(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
           frame_idx(0), timestamp(0.0) {}
 

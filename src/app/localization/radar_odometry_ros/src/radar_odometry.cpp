@@ -56,13 +56,13 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
                 // 정적 포인트가 많은데 prediction이 잘못되어 vel filtering이 실패하는지 확인 위해 ransac 실행
                 // ransac 인라이어 비중이 높으면 vel fiting 성공으로 다시 간주
                 vel_filtered_radar_points = RansacFit(cropped_frame, 1, 100); // margin, max_iter
-                if( (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() > 0.9 ){
+                if( (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() > 0.8 ){
                     // 80% 이상이 인라이어
                     ROS_INFO_STREAM("RANSAC INLIER Percent " << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
                 }
                 else{
                     ROS_WARN_STREAM("RANSAC INLIER Percent " << (float) vel_filtered_radar_points.size() / (float) cropped_frame.size() * 100.0 << " % ");
-                    b_is_fitting_failed = true;
+                    // b_is_fitting_failed = true;
                     vel_filtered_radar_points = cropped_frame;
                 }
 
@@ -231,10 +231,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
         poses_.push_back(new_pose);
         times_.push_back(i_radar_timestamp_sec);
-
     }
-
-
 
     return {ransac_radar_points, ransac_radar_points};
 }
@@ -280,28 +277,6 @@ Eigen::Matrix4d RadarOdometry::GetPredictionModel(double cur_timestamp) const {
     pred.block<3, 1>(0, 3) = predicted_translation;
 
     return pred;
-}
-
-Eigen::Matrix4d calculateDisplacement(const Eigen::Matrix4d& V, double delta_t_sec) {
-    // 각속도 행렬 Omega (3x3 스큐대칭 행렬)
-    Eigen::Matrix3d Omega = V.block<3, 3>(0, 0);
-    // 선형 속도 벡터 v
-    Eigen::Vector3d v = V.block<3, 1>(0, 3);
-    // 변환 행렬 T를 초기화 (단위 행렬)
-    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-    // 회전 행렬 R 계산 (exponential map 사용)
-    Eigen::Matrix3d R = (Omega * delta_t_sec).exp();
-    // 평행 이동 벡터 t 계산
-    Eigen::Vector3d t;
-    if (Omega.isZero(1e-6)) {
-    t = v * delta_t_sec;
-    } else {
-    t = (Eigen::Matrix3d::Identity() - R) * Omega.inverse() * v;
-    }
-    // 변환 행렬 T에 회전 행렬 R과 평행 이동 벡터 t 설정
-    T.block<3, 3>(0, 0) = R;
-    T.block<3, 1>(0, 3) = t;
-    return T;
 }
 
 double RadarOdometry::GetAdaptiveThreshold() {

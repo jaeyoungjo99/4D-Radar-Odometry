@@ -35,7 +35,7 @@ double AdaptiveThreshold::ComputeThreshold() {
         return initial_threshold_;
     }
 
-    while(deque_model_error_sse2_.size() > 10){
+    while(deque_model_error_sse2_.size() > 20){
         deque_model_error_sse2_.pop_front();
     }
     

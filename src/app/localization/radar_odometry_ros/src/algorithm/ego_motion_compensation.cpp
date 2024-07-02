@@ -184,7 +184,7 @@ bool CheckVelValidation(const Velocity & est_motion)
 
     std::cout<<"ICP vx: "<<est_motion.linear.x()<<" vy: "<<est_motion.linear.y()<< " vyaw_vel deg: "<<est_motion.angular.z() * 180 / M_PI <<std::endl;
 
-    if( fabs(est_motion.angular.z()) > 20.0 * M_PI/180.0 ||
+    if( fabs(est_motion.angular.z()) > 90.0 * M_PI/180.0 ||
        fabs(est_motion.linear.x()) > 50 || fabs(est_motion.linear.y()) > 50){
         return false;
     } 

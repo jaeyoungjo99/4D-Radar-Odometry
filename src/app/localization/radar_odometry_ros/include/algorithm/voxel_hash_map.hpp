@@ -69,7 +69,7 @@ struct VoxelHashMap{
                                              double max_correspondance_distance) const;
     inline void Clear() { map_.clear(); }
     inline bool Empty() const { return map_.empty(); }
-    void Update(const RadarPointVector &points, const Eigen::Vector3d &origin); // 여기서 Eigen::Vector3d 는 그냥 sensor translation
+    void Update(const RadarPointVector &points, const Eigen::Vector3d &origin); // 여기서 Eigen::Vector3d 는 point 위치
     void Update(const RadarPointVector &points, const Eigen::Matrix4d &pose);
     void AddPoints(const RadarPointVector &points);
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
