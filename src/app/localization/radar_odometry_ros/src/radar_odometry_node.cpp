@@ -65,6 +65,7 @@ void RadarOdometryNode::Init()
     config_.ego_to_radar_x_m = cfg_d_ego_to_radar_x_m_;
     config_.ego_to_radar_yaw_deg = cfg_d_ego_to_radar_yaw_deg_;
     config_.odometry_type = radar_odometry::pipeline::OdometryType(cfg_i_odometry_type_);
+    config_.icp_type = radar_odometry::IcpType(cfg_i_icp_type_);
 
     odometry_ = radar_odometry::pipeline::RadarOdometry(config_);
     
@@ -188,6 +189,9 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "odometry_type", cfg_i_odometry_type_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/odometry_type");
         }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "icp_type", cfg_i_icp_type_) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_type");
+        }
 
         if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_x_m", cfg_d_ego_to_radar_x_m_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_x_m");
@@ -241,11 +245,15 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "lm_lambda", config_.lm_lambda) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/lm_lambda");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_radial_uncertainty_m", config_.radar_radial_uncertainty_m) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_radial_uncertainty_m");
+
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "range_variance_m", config_.range_variance_m) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/range_variance_m");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_horizontal_uncertainty_deg", config_.radar_horizontal_uncertainty_deg) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/radar_horizontal_uncertainty_deg");
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "azimuth_variance_deg", config_.azimuth_variance_deg) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/azimuth_variance_deg");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "elevation_variance_deg", config_.elevation_variance_deg) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/elevation_variance_deg");
         }
 
 

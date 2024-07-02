@@ -54,6 +54,7 @@ struct RadarOdometryConfig{
     double ego_to_radar_x_m = 1.0;
     double ego_to_radar_yaw_deg = 0.0;
     OdometryType odometry_type = OdometryType::EGOMOTION;
+    IcpType icp_type = IcpType::P2P;
 
     // map params
     double voxel_size = 1.0;
@@ -73,10 +74,12 @@ struct RadarOdometryConfig{
     double doppler_gm_th = 0.5;
     double doppler_trans_lambda = 0.5;
     int icp_min_point_num = 10;
+
     double lm_lambda = 0.0;
 
-    double radar_radial_uncertainty_m = 1.0;
-    double radar_horizontal_uncertainty_deg = 2.0;
+    double range_variance_m = 0.1;
+    double azimuth_variance_deg = 2.0;
+    double elevation_variance_deg = 5.0;
 };
 
 class RadarOdometry{
@@ -87,7 +90,10 @@ public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
         local_map_(config.voxel_size, config.max_range, config.max_points_per_voxel, config.local_map_time_th),
-        adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range)
+        adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range),
+        registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
+                    config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
+                    config.azimuth_variance_deg, config.elevation_variance_deg)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
@@ -110,6 +116,7 @@ private:
     RadarOdometryConfig config_;
     VoxelHashMap local_map_;
     AdaptiveThreshold adaptive_threshold_;
+    Registration registration_;
 
     double d_last_radar_time_sec_;
     std::vector<RadarPoint> last_radar_ptr;

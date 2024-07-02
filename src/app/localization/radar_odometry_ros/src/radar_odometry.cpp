@@ -130,28 +130,9 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
             // if(sigma > 1.0) sigma = 1.0;
 
-            if(config_.icp_3dof == true){
-                if(config_.icp_doppler == true){
-                new_pose = RegisterFrameDoppler3DoF(ransac_radar_points, local_map_, last_pose * lsq_prediction, last_pose,
-                                            3.0 * sigma, sigma / 3.0,
-                                            config_.doppler_gm_th, config_.doppler_trans_lambda); 
-                }
-                else{
-                new_pose = RegisterFrame3DoF(ransac_radar_points, local_map_, last_pose * lsq_prediction, 
-                                            3.0 * sigma, sigma / 3.0); 
-                }
-            }
-            else{ // icp_3dof == false
-                if(config_.icp_doppler == true){
-                    new_pose = RegisterFrameDoppler(ransac_radar_points, local_map_, last_pose * lsq_prediction, last_pose,
-                                                    3.0 * sigma, sigma / 3.0,
-                                                    config_.doppler_gm_th, config_.doppler_trans_lambda); 
-                }
-                else{
-                    new_pose = RegisterFrame(ransac_radar_points, local_map_, last_pose * lsq_prediction, 
-                                                3.0 * sigma, sigma / 3.0); 
-                }
-            }
+            new_pose = registration_.RunRegister(ransac_radar_points, local_map_, last_pose * lsq_prediction, last_pose,
+                                            d_delta_radar_time_sec,
+                                            3.0 * sigma, sigma / 3.0);
 
             std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 
@@ -188,28 +169,9 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         
         // if(sigma > 1.0) sigma = 1.0;
 
-        if(config_.icp_3dof == true){
-            if(config_.icp_doppler == true){
-            new_pose = RegisterFrameDoppler3DoF(cropped_frame, local_map_, initial_guess, last_pose,
-                                        3.0 * sigma, sigma / 3.0,
-                                        config_.doppler_gm_th, config_.doppler_trans_lambda); 
-            }
-            else{
-            new_pose = RegisterFrame3DoF(cropped_frame, local_map_, initial_guess, 
-                                        3.0 * sigma, sigma / 3.0); 
-            }
-        }
-        else{ // icp_3dof == false
-            if(config_.icp_doppler == true){
-                new_pose = RegisterFrameDoppler(cropped_frame, local_map_, initial_guess, last_pose,
-                                                3.0 * sigma, sigma / 3.0,
-                                                config_.doppler_gm_th, config_.doppler_trans_lambda); 
-            }
-            else{
-                new_pose = RegisterFrame(cropped_frame, local_map_, initial_guess, 
-                                            3.0 * sigma, sigma / 3.0); 
-            }
-        }
+        new_pose = registration_.RunRegister(ransac_radar_points, local_map_, initial_guess, last_pose,
+                                d_delta_radar_time_sec,
+                                3.0 * sigma, sigma / 3.0);
 
         std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 

@@ -18,7 +18,7 @@ using Matrix4_6d = Eigen::Matrix<double, 4, 6>;
 
 
 // Variables and functions only used in this cpp
-namespace{
+namespace {
 
 inline double square(double x) { return x * x; }
 
@@ -82,14 +82,18 @@ Eigen::Matrix3d vectorToSkewSymmetricMatrix(const Eigen::Vector3d& vec) {
 }
 
 
-Eigen::Matrix4d AlignClouds(const std::vector<RadarPoint> &source,
+}
+
+namespace radar_odometry {
+
+Eigen::Matrix4d Registration::AlignClouds(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             double th) {
     Eigen::Matrix6d JTJ = Eigen::Matrix6d::Zero();
     Eigen::Vector6d JTr = Eigen::Vector6d::Zero();
 
     for (size_t i = 0; i < source.size(); ++i) {
-        const Eigen::Vector3d residual = source[i].pose - target[i].pose;
+        const Eigen::Vector3d residual = target[i].pose - source[i].pose;
         Eigen::Matrix3_6d J_r;
 
         // [ I(3x3), -(T p_k)^ ]
@@ -101,7 +105,10 @@ Eigen::Matrix4d AlignClouds(const std::vector<RadarPoint> &source,
         JTr.noalias() += J_r.transpose() * weight * residual;
     }
 
-    const Eigen::Vector6d x = JTJ.ldlt().solve(-JTr);
+    // const Eigen::Vector6d x = JTJ.ldlt().solve(JTr);
+
+    Eigen::Matrix6d JTJ_diag = JTJ.diagonal().asDiagonal();
+    const Eigen::Vector6d x = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
 
     Eigen::Vector3d rotation_vector = x.tail<3>(); // rpy
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
@@ -111,7 +118,7 @@ Eigen::Matrix4d AlignClouds(const std::vector<RadarPoint> &source,
     return transformation;
 }
 
-Eigen::Matrix4d AlignCloudsDoppler(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsDoppler(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             const Velocity &sensor_velocity,
                             double th,
@@ -168,8 +175,8 @@ Eigen::Matrix4d AlignCloudsDoppler(const std::vector<RadarPoint> &source,
         Eigen::Matrix1_6d J_v;
 
         // [ - d_k / dt , -d_k x t_s / dt ]
-        J_v.block<1,3>(0,0) = - point_direction_vector.transpose() / 0.1;
-        J_v.block<1,3>(0,3) = - (point_direction_vector.cross(ego_to_sensor_translation)).transpose() / 0.1;
+        J_v.block<1,3>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
+        J_v.block<1,3>(0,3) = - (point_direction_vector.cross(ego_to_sensor_translation)).transpose() / sensor_velocity.time_diff_sec;
 
         double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual));
 
@@ -196,7 +203,10 @@ Eigen::Matrix4d AlignCloudsDoppler(const std::vector<RadarPoint> &source,
 
     const Eigen::Vector6d x_t = JTJ.ldlt().solve(JTr);
     const Eigen::Vector6d x_v = JvTJv.ldlt().solve(JvTrv);
-    const Eigen::Vector6d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
+    // const Eigen::Vector6d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
+
+    Eigen::Matrix6d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
+    const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
 
     // std::cout<<"x_t"<<std::endl;
     // std::cout<<x_t.transpose()<<std::endl;
@@ -216,7 +226,7 @@ Eigen::Matrix4d AlignCloudsDoppler(const std::vector<RadarPoint> &source,
     return transformation;
 }
 
-Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignClouds3DoF(const std::vector<RadarPoint> &source,
                                 const std::vector<RadarPoint> &target,
                                 double th) {
     Eigen::Matrix3d JTJ = Eigen::Matrix3d::Zero();
@@ -243,7 +253,7 @@ Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
     // const Eigen::Vector3d x = JTJ.ldlt().solve(JTr);
 
     Eigen::Matrix3d JTJ_diag = JTJ.diagonal().asDiagonal();
-    const Eigen::Vector3d x = (JTJ + 0.0 * JTJ_diag).ldlt().solve(JTr);
+    const Eigen::Vector3d x = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
 
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
     transformation.block<2, 2>(0, 0) = Eigen::Rotation2Dd(x(2)).toRotationMatrix();
@@ -253,12 +263,13 @@ Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
     return transformation;
 }
 
-Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             const Velocity &sensor_velocity,
                             double th,
                            double doppler_gm_th,
                            double doppler_trans_lambda) {
+
     Eigen::Matrix3d JTJ = Eigen::Matrix3d::Zero();
     Eigen::Vector3d JTr = Eigen::Vector3d::Zero();
 
@@ -310,8 +321,9 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
         Eigen::Matrix1_3d J_v;
 
         // [ - d_k / dt , -d_k x t_s / dt ]
-        J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / 0.1;
-        J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - point_direction_vector.y() * ego_to_sensor_translation.x()) / 0.1;
+        J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
+        J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - 
+                      point_direction_vector.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
 
         double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual)) * range_weight;
 
@@ -342,7 +354,7 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
     const Eigen::Vector3d x_t = JTJ.ldlt().solve(JTr);
     const Eigen::Vector3d x_v = JvTJv.ldlt().solve(JvTrv);
     // const Eigen::Vector3d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
-    const Eigen::Vector3d x_tot = (JTJ_tot + 0.0 * JTJ_tot_diag).ldlt().solve(JTr_tot);
+    const Eigen::Vector3d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
 
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
 
@@ -355,12 +367,7 @@ Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
 }
 
 
-}
-
-namespace radar_odometry {
-
-
-Eigen::Matrix4d RegisterFrame(const std::vector<RadarPoint> &frame,
+Eigen::Matrix4d Registration::RegisterFrame6DoF(const std::vector<RadarPoint> &frame,
                               const VoxelHashMap &voxel_map,
                               const Eigen::Matrix4d &initial_guess,
                               double max_correspondence_distance,
@@ -381,17 +388,13 @@ Eigen::Matrix4d RegisterFrame(const std::vector<RadarPoint> &frame,
     return T_icp * initial_guess;
 }
 
-Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
+Eigen::Matrix4d Registration::RegisterFrameDoppler6DoF(const std::vector<RadarPoint> &frame,
                               const VoxelHashMap &voxel_map,
                               const Eigen::Matrix4d &initial_guess,
                               const Eigen::Matrix4d &last_pose,
+                              const double dt,
                               double max_correspondence_distance,
-                              double kernel,
-                              double doppler_gm_th,
-                              double doppler_trans_lambda) {
-
-    doppler_gm_th = std::max(doppler_gm_th, DBL_MIN);
-    doppler_trans_lambda = std::min(std::max(doppler_trans_lambda, 0.0), 1.0);
+                              double kernel) {
 
     if (voxel_map.Empty()) return initial_guess;
 
@@ -407,9 +410,9 @@ Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
         const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
 
         delta_pose = last_pose.inverse() * last_icp_pose;
-        iter_velocity = CalculateVelocity(delta_pose, 0.1);
+        iter_velocity = CalculateVelocity(delta_pose, dt);
 
-        Eigen::Matrix4d estimation = AlignCloudsDoppler(src, tgt, iter_velocity, kernel, doppler_gm_th, doppler_trans_lambda);
+        Eigen::Matrix4d estimation = AlignCloudsDoppler(src, tgt, iter_velocity, kernel, doppler_gm_th_, doppler_trans_lambda_);
         TransformPoints(estimation, source);
         T_icp = estimation * T_icp;
 
@@ -420,7 +423,7 @@ Eigen::Matrix4d RegisterFrameDoppler(const std::vector<RadarPoint> &frame,
     return T_icp * initial_guess;
 }
 
-Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
+Eigen::Matrix4d Registration::RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
                                   const VoxelHashMap &voxel_map,
                                   const Eigen::Matrix4d &initial_guess,
                                   double max_correspondence_distance,
@@ -444,18 +447,13 @@ Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
     return T_icp * initial_guess;
 }
 
-Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
+Eigen::Matrix4d Registration::RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
                            const VoxelHashMap &voxel_map,
                            const Eigen::Matrix4d &initial_guess,
                            const Eigen::Matrix4d &last_pose,
+                           const double dt,
                            double max_correspondence_distance,
-                           double kernel,
-                           double doppler_gm_th,
-                           double doppler_trans_lambda) {
-
-    
-    doppler_gm_th = std::max(doppler_gm_th, DBL_MIN);
-    doppler_trans_lambda = std::min(std::max(doppler_trans_lambda, 0.0), 1.0);
+                           double kernel) {
 
     if (voxel_map.Empty()) return initial_guess;
 
@@ -471,9 +469,9 @@ Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
         const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
 
         delta_pose = last_pose.inverse() * last_icp_pose;
-        iter_velocity = CalculateVelocity(delta_pose, 0.1);
+        iter_velocity = CalculateVelocity(delta_pose, dt);
 
-        Eigen::Matrix4d estimation = AlignCloudsDoppler3DoF(src, tgt, iter_velocity, kernel, doppler_gm_th, doppler_trans_lambda);
+        Eigen::Matrix4d estimation = AlignCloudsDoppler3DoF(src, tgt, iter_velocity, kernel, doppler_gm_th_, doppler_trans_lambda_);
         TransformPoints(estimation, source);
         T_icp = estimation * T_icp;
 
@@ -486,5 +484,36 @@ Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
     return T_icp * initial_guess;
 }
 
+Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
+                        const VoxelHashMap &voxel_map,
+                        const Eigen::Matrix4d &initial_guess,
+                        const Eigen::Matrix4d &last_pose,
+                        const double dt,
+                        double max_correspondence_distance,
+                        double kernel)
+{
 
+    doppler_gm_th_ = std::max(doppler_gm_th_, DBL_MIN);
+    doppler_trans_lambda_ = std::min(std::max(doppler_trans_lambda_, 0.0), 1.0);
+
+    if(icp_3dof_ == true){
+        // ICP 3DOF
+        if(icp_doppler_ == true){
+            return RegisterFrameDoppler3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
+        }
+        else{
+            return RegisterFrame3DoF(frame, voxel_map, initial_guess, max_correspondence_distance, kernel);
+        }
+    }
+    else{
+        // ICP 6DOF
+        if(icp_doppler_ == true){
+            return RegisterFrameDoppler6DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
+        }
+        else{
+            return RegisterFrame6DoF(frame, voxel_map, initial_guess, max_correspondence_distance, kernel);
+        }
+
+    }
+}
 }

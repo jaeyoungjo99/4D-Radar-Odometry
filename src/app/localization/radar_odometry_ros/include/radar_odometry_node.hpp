@@ -245,6 +245,7 @@ class RadarOdometryNode : public AtomTask {
         std::string cfg_str_imu_topic_;
 
         int cfg_i_odometry_type_;
+        int cfg_i_icp_type_;
 
         double cfg_d_ego_to_radar_x_m_;
         double cfg_d_ego_to_radar_yaw_deg_;
