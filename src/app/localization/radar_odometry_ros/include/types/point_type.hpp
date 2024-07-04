@@ -230,6 +230,8 @@ inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, doub
     cov_point.cov.block<2, 2>(0, 0) = cov;
     cov_point.cov(2, 2) = 1.0;
 
+    // cov_point.cov = Eigen::Matrix4d::Identity(); // TODO:
+
     return cov_point;
 }
 

@@ -221,8 +221,11 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "min_motion_th", config_.min_motion_th) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/min_motion_th");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "initial_threshold", config_.initial_threshold) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/initial_threshold");
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "initial_trans_threshold", config_.initial_trans_threshold) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/initial_trans_threshold");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "initial_vel_threshold", config_.initial_vel_threshold) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/initial_vel_threshold");
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_vel_margin", config_.doppler_vel_margin) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_vel_margin");

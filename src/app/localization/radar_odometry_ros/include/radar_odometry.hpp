@@ -65,7 +65,8 @@ struct RadarOdometryConfig{
     double local_map_time_th = 1.0;
 
     double min_motion_th = 0.1;
-    double initial_threshold = 2.0; // p2p search distance
+    double initial_trans_threshold = 2.0; // p2p search distance
+    double initial_vel_threshold = 30.0; // vel search distance
 
     double doppler_vel_margin = 3.0;
 
@@ -92,10 +93,12 @@ public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
         local_map_(config.voxel_size, config.max_range, config.max_points_per_voxel, config.local_map_time_th),
-        adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range),
+        adaptive_threshold_(config.initial_trans_threshold, config.initial_vel_threshold,
+            config.min_motion_th, config.max_range),
         registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
                     config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
-                    config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point)
+                    config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point,
+                    config.ego_to_radar_x_m)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
@@ -105,7 +108,8 @@ public:
     Eigen::Matrix4d GetPredictionModel() const;
     Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
     
-    double GetAdaptiveThreshold();
+    double GetTransAdaptiveThreshold();
+    double GetVelAdaptiveThreshold();
     bool HasMoved();
 
 public:

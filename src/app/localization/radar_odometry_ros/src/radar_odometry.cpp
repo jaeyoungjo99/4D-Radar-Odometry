@@ -122,17 +122,19 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
                 config_.odometry_type == OdometryType::EGOMOTIONICP ){
             std::chrono::system_clock::time_point registration_start_time_sec = std::chrono::system_clock::now();
 
-            double sigma = GetAdaptiveThreshold(); // Keep estimated model error
+            double trans_sigma = GetTransAdaptiveThreshold(); // Keep estimated model error
+            double vel_sigma = GetVelAdaptiveThreshold(); // Keep estimated model error
 
-            ROS_WARN_STREAM("Sigma: "<<sigma);
+            ROS_WARN_STREAM("Trans Sigma: "<< trans_sigma);
+            ROS_WARN_STREAM("Vel   Sigma: "<< vel_sigma);
             
             std::cout<<"LSQ Prediction Norm: "<< lsq_prediction.block<3,1>(0,3).norm() <<std::endl;
 
-            // if(sigma > 1.0) sigma = 1.0;
+            // if(trans_sigma > 1.0) trans_sigma = 1.0;
 
             new_pose = registration_.RunRegister(ransac_radar_points, local_map_, last_pose * lsq_prediction, last_pose,
                                             d_delta_radar_time_sec,
-                                            3.0 * sigma, sigma / 3.0);
+                                            3.0 * trans_sigma, trans_sigma / 3.0);
 
             std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 
@@ -163,15 +165,17 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
         std::chrono::system_clock::time_point registration_start_time_sec = std::chrono::system_clock::now();
 
-        double sigma = GetAdaptiveThreshold(); // Keep estimated model error
+        double trans_sigma = GetTransAdaptiveThreshold(); // Keep estimated model error
+        double vel_sigma = GetVelAdaptiveThreshold(); // Keep estimated model error
 
-        ROS_WARN_STREAM("Sigma: "<<sigma);
+        ROS_WARN_STREAM("Trans Sigma: "<< trans_sigma);
+        ROS_WARN_STREAM("Vel   Sigma: "<< vel_sigma);
         
-        // if(sigma > 1.0) sigma = 1.0;
+        // if(trans_sigma > 1.0) trans_sigma = 1.0;
 
         new_pose = registration_.RunRegister(cropped_frame, local_map_, initial_guess, last_pose,
                                 d_delta_radar_time_sec,
-                                3.0 * sigma, sigma / 3.0);
+                                3.0 * trans_sigma, trans_sigma / 3.0);
 
         std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 
@@ -241,11 +245,18 @@ Eigen::Matrix4d RadarOdometry::GetPredictionModel(double cur_timestamp) const {
     return pred;
 }
 
-double RadarOdometry::GetAdaptiveThreshold() {
+double RadarOdometry::GetTransAdaptiveThreshold() {
     if (!HasMoved()) {
-        return config_.initial_threshold;
+        return config_.initial_trans_threshold;
     }
-    return adaptive_threshold_.ComputeThreshold();
+    return adaptive_threshold_.ComputeTransThreshold();
+}
+
+double RadarOdometry::GetVelAdaptiveThreshold() {
+    if (!HasMoved()) {
+        return config_.initial_vel_threshold;
+    }
+    return adaptive_threshold_.ComputeTransThreshold();
 }
 
 

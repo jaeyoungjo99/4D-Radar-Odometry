@@ -25,8 +25,9 @@
 namespace radar_odometry {
 
 struct AdaptiveThreshold {
-    explicit AdaptiveThreshold(double initial_threshold, double min_motion_th, double max_range)
-        : initial_threshold_(initial_threshold),
+    explicit AdaptiveThreshold(double initial_trans_threshold, double initial_vel_threshold,
+                                double min_motion_th, double max_range)
+        : initial_trans_threshold_(initial_trans_threshold), initial_vel_threshold_(initial_vel_threshold),
           min_motion_th_(min_motion_th),
           max_range_(max_range) {}
 
@@ -36,10 +37,12 @@ struct AdaptiveThreshold {
     }
 
     /// Returns the KISS-ICP adaptive threshold used in registration
-    double ComputeThreshold();
+    double ComputeTransThreshold();
+    double ComputeVelThreshold();
 
     // configurable parameters
-    double initial_threshold_;
+    double initial_trans_threshold_;
+    double initial_vel_threshold_;
     double min_motion_th_;
     double max_range_;
 
