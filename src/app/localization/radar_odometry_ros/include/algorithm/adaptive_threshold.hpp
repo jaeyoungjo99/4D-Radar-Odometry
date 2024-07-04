@@ -51,6 +51,7 @@ struct AdaptiveThreshold {
     int num_samples_ = 0;
    
     std::deque<double> deque_model_error_sse2_;
+    std::deque<double> deque_vel_error_sse2_;
 
     Eigen::Matrix4d model_deviation_ = Eigen::Matrix4d::Identity();
 };

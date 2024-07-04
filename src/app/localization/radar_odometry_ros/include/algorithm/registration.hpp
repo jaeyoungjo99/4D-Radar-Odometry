@@ -91,7 +91,20 @@ struct Registration{
                             const std::vector<RadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
+                            double trans_th,
+                            double vel_th);
+
+    Eigen::Matrix4d AlignCloudsLocal6DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             double th);
+
+    Eigen::Matrix4d AlignCloudsLocalDoppler6DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
+                            const Velocity &sensor_velocity,
+                            double trans_th,
+                            double vel_th);
 
 
     // Registration Functions
@@ -117,8 +130,17 @@ struct Registration{
                             const Eigen::Matrix4d &initial_guess,
                             const Eigen::Matrix4d &last_pose,
                             const double dt,
-                            double max_correspondence_distance,
-                            double kernel);
+                            double trans_sigma,
+                            double vel_sigma);
+
+    Eigen::Matrix4d RegisterFrameLocal6DoF(const std::vector<RadarPoint> &frame,
+                            const VoxelHashMap &voxel_map,
+                            const Eigen::Matrix4d &initial_guess,
+                            const Eigen::Matrix4d &last_pose,
+                            const double dt,
+                            double trans_sigma,
+                            double vel_sigma);
+
 
 
     // Master
@@ -127,8 +149,8 @@ struct Registration{
                             const Eigen::Matrix4d &initial_guess,
                             const Eigen::Matrix4d &last_pose,
                             const double dt,
-                            double max_correspondence_distance,
-                            double trans_kernel);
+                            double trans_sigma,
+                            double vel_sigma);
 
 
     // Parameters

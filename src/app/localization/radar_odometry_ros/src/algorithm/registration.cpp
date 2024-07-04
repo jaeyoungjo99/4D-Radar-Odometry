@@ -199,7 +199,7 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler6DoF(const std::vector<RadarPoin
         Eigen::Matrix1_4d R_tot;
     
         J_tot.block<3,6>(0,0) = J_r * sqrt(weight_t * (1.0 - doppler_trans_lambda_));
-        J_tot.block<1,6>(2,0) = J_v * sqrt(weight_v * doppler_trans_lambda_);
+        J_tot.block<1,6>(3,0) = J_v * sqrt(weight_v * doppler_trans_lambda_);
 
         R_tot.block<1,3>(0,0) << residual.x() * sqrt(weight_t * (1.0 - doppler_trans_lambda_)), 
                                  residual.y() * sqrt(weight_t * (1.0 - doppler_trans_lambda_)),
@@ -517,7 +517,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
                             const std::vector<RadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
-                            double th) {
+                            double trans_th, double vel_th) {
 
     Eigen::Matrix3d JTJ_tot = Eigen::Matrix3d::Zero();
     Eigen::Vector3d JTr_tot = Eigen::Vector3d::Zero();
@@ -589,7 +589,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
         J_r.block<2, 1>(0, 2) << -source[i].local(1), source[i].local(0); // 센서좌표계 SkewSymmetric
 
-        double weight_t = square(th) / square(th + residual_local.squaredNorm()) * range_weight;
+        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight;
 
         // 2. Velocity
         // V_D_k - V_est(T)
@@ -613,7 +613,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
 
         // J_v(0,2) = 0;
 
-        double weight_v = square(doppler_gm_th_) / square(doppler_gm_th_ + square(vel_residual));
+        double weight_v = square(vel_th) / square(vel_th + square(vel_residual));
 
         Eigen::Matrix3d J_tot;
         Eigen::Matrix1_3d R_tot;
@@ -644,6 +644,202 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
     transformation(1, 3) = x_tot(1);
 
 
+    return transformation;
+}
+
+Eigen::Matrix4d Registration::AlignCloudsLocal6DoF(const std::vector<RadarPoint> &source,
+                                const std::vector<RadarPoint> &target,
+                                Eigen::Matrix4d &iter_pose,
+                                double th) {
+
+    Eigen::Matrix6d JTJ = Eigen::Matrix6d::Zero();
+    Eigen::Vector6d JTr = Eigen::Vector6d::Zero();
+
+    for (size_t i = 0; i < source.size(); ++i) {
+        const Eigen::Vector3d residual = target[i].pose - source[i].pose;
+
+        Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
+        Eigen::Vector4d transformed_hom_point = iter_pose.inverse() * hom_point;
+        
+        const Eigen::Vector3d target_local = transformed_hom_point.head<3>();
+        const Eigen::Vector3d residual_local = target_local - source[i].local.head<3>();
+
+        Eigen::Matrix3_6d J_r;
+
+        double range_weight = 1.0;
+
+        if(icp_type_ == IcpType::P2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose(); // Only Source Point Cov
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+
+
+        }
+        else if (icp_type_ == IcpType::PCOV2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = target[i].sensor_pose.matrix() * target[i].cov * target[i].sensor_pose.matrix().transpose() + 
+                              iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose();
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+        }
+
+        // [ I(3x3), -(T p_k)^ ]
+        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        J_r.block<3, 3>(0, 3) = -1.0 * vectorToSkewSymmetricMatrix(source[i].local);
+
+        double weight = square(th) / square(th + residual_local.squaredNorm()) * range_weight;
+        JTJ.noalias() += J_r.transpose() * weight * J_r;
+        JTr.noalias() += J_r.transpose() * weight * residual_local;
+
+    }
+
+    Eigen::Matrix6d JTJ_diag = JTJ.diagonal().asDiagonal();
+    const Eigen::Vector6d x = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
+
+    Eigen::Vector3d rotation_vector = x.tail<3>(); // rpy
+    Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
+    transformation.block<3, 3>(0, 0) = (Eigen::AngleAxisd(rotation_vector.norm(), rotation_vector.normalized())).toRotationMatrix(); // rotation
+    transformation.block<3, 1>(0, 3) = x.head<3>(); // transform xyz
+
+    // Source Point 의 센서 좌표 기준 미소 transformation
+    return transformation;
+}
+
+Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
+                            const Velocity &sensor_velocity,
+                            double trans_th, double vel_th) {
+
+    Eigen::Matrix6d JTJ_tot = Eigen::Matrix6d::Zero();
+    Eigen::Vector6d JTr_tot = Eigen::Vector6d::Zero();
+
+    Eigen::Vector3d est_sensor_vel_vehicle_coord = sensor_velocity.linear;
+    // Eigen::Vector3d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y(), 0.0);
+    Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.5);
+    // Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.0);
+
+    for (size_t i = 0; i < source.size(); ++i) {
+        Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
+        Eigen::Vector4d transformed_hom_point = iter_pose.inverse() * hom_point;
+        
+        const Eigen::Vector3d target_local = transformed_hom_point.head<3>();
+        const Eigen::Vector3d residual_local = target_local - source[i].local.head<3>();
+
+        Eigen::Matrix3_6d J_r;
+
+        double range_weight = 1.0;
+
+        if(icp_type_ == IcpType::P2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose(); // Only Source Point Cov
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+
+
+        }
+        else if (icp_type_ == IcpType::PCOV2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = target[i].sensor_pose.matrix() * target[i].cov * target[i].sensor_pose.matrix().transpose() + 
+                              iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose();
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+        }
+
+        // [ I(3x3), -(T p_k)^ ]
+        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        J_r.block<3, 3>(0, 3) = -1.0 * vectorToSkewSymmetricMatrix(source[i].local);
+
+        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight;
+
+        // 2. Velocity
+        // V_D_k - V_est(T)
+        const double p_azim_rad = source[i].azi_angle * M_PI / 180.0f; // 정면 0 반시계
+        const double p_ele_rad = source[i].ele_angle * M_PI / 180.0f; // 정면 0 윗방향
+
+        Eigen::Vector3d point_direction_vector(cos(p_ele_rad) * cos(p_azim_rad),
+                                               cos(p_ele_rad) * sin(p_azim_rad), 
+                                               sin(p_ele_rad));
+        
+
+        // Eigen::Vector3d point_direction_vector(cos(p_azim_rad),sin(p_azim_rad), 0.0);
+
+
+        // 차량의 속도 벡터와 관측 각도를 통해 도플러 속도 예상. 전진시 음수
+        double est_point_vel = - point_direction_vector.dot(est_sensor_vel_vehicle_coord);
+        double vel_residual = source[i].vel - est_point_vel;
+
+        Eigen::Matrix1_6d J_v;
+
+        // [ - d_k / dt , -d_k x t_s / dt ]
+        J_v.block<1,3>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
+        J_v.block<1,3>(0,3) = - (point_direction_vector.cross(ego_to_sensor_translation)).transpose() / sensor_velocity.time_diff_sec;
+        // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO:
+
+        double weight_v = square(vel_th) / square(vel_th + square(vel_residual));
+
+        Eigen::Matrix4_6d J_tot;
+        Eigen::Matrix1_4d R_tot;
+    
+        double sqrt_trans_weight = sqrt(weight_t * (1.0 - doppler_trans_lambda_));
+        double sqrt_vel_weight = sqrt(weight_v * doppler_trans_lambda_);
+
+        J_tot.block<3,6>(0,0) = J_r * sqrt_trans_weight;
+        J_tot.block<1,6>(3,0) = J_v * sqrt_vel_weight;
+
+        R_tot.block<1,3>(0,0) << residual_local.x() * sqrt_trans_weight, 
+                                 residual_local.y() * sqrt_trans_weight,
+                                 residual_local.z() * sqrt_trans_weight;
+        R_tot(0,3) = vel_residual * sqrt_vel_weight;
+
+        JTJ_tot.noalias() += J_tot.transpose() * J_tot; // 6x4 4x6
+        JTr_tot.noalias() += J_tot.transpose() * R_tot.transpose(); // 6x4 4x1
+
+    }
+
+    Eigen::Matrix6d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
+    const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
+
+
+    Eigen::Vector3d rotation_vector = x_tot.tail<3>(); // rpy
+    Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
+    transformation.block<3, 3>(0, 0) = (Eigen::AngleAxisd(rotation_vector.norm(), rotation_vector.normalized())).toRotationMatrix(); // rotation
+    transformation.block<3, 1>(0, 3) = x_tot.head<3>(); // transform xyz
+
+    // Source Point 의 센서 좌표 기준 미소 transformation
     return transformation;
 }
 
@@ -697,6 +893,8 @@ Eigen::Matrix4d Registration::RegisterFrame6DoF(const std::vector<RadarPoint> &f
     return T_icp * initial_guess;
 }
 
+
+
 Eigen::Matrix4d Registration::RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
                                                 const VoxelHashMap &voxel_map,
                                                 const Eigen::Matrix4d &initial_guess,
@@ -708,7 +906,7 @@ Eigen::Matrix4d Registration::RegisterFrame3DoF(const std::vector<RadarPoint> &f
 
     // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
     std::vector<RadarPoint> source_global = frame;
-    CalFramePointCov2d(source_global, range_variance_m_, azimuth_variance_deg_);
+    // CalFramePointCov2d(source_global, range_variance_m_, azimuth_variance_deg_);
     
     TransformPoints(initial_guess, source_global);
 
@@ -769,23 +967,16 @@ Eigen::Matrix4d Registration::RegisterFrameLocal3DoF(const std::vector<RadarPoin
                                                 const Eigen::Matrix4d &initial_guess,
                                                 const Eigen::Matrix4d &last_pose,
                                                 const double dt,
-                                                double max_correspondence_distance,
-                                                double kernel) {
+                                                double trans_sigma,
+                                                double vel_sigma) {
     if (voxel_map.Empty()) return initial_guess;
 
     // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
-    std::vector<RadarPoint> source_local = frame;
-    CalFramePointCov2d(source_local, range_variance_m_, azimuth_variance_deg_);
-    
+    std::vector<RadarPoint> source_local = frame;    
     std::vector<RadarPoint> source_global = source_local;
-    // TransformPoints(initial_guess, source_global);
     TransformPoints(initial_guess, source_local, source_global);
 
     // 2. 
-    /*
-    Doppler Alignment를 위해서는 현재 추정되고 있는 센서의 velocity가 필요함 (vx, vy, vz, dt)
-    */
-
     Eigen::Matrix4d last_icp_pose = initial_guess;
     
     int i_iter_num = 0;
@@ -795,19 +986,20 @@ Eigen::Matrix4d Registration::RegisterFrameLocal3DoF(const std::vector<RadarPoin
         // Get Correspodence in global frame
         std::vector<RadarPoint> source_c_global, target_c_global;
         if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
-            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, max_correspondence_distance);
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, trans_sigma * 3);
         } else {
-            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, max_correspondence_distance, gicp_max_point_);
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, trans_sigma * 3, gicp_max_point_);
         }
 
         Eigen::Matrix4d estimation_local; // 센서 좌표계 상에서의 ICP 미소 변화량
 
         if(icp_doppler_ == true){
             Velocity iter_velocity = CalculateVelocity(last_pose.inverse() * last_icp_pose, dt); // last pose 기준 상대속도
-            estimation_local = AlignCloudsLocalDoppler3DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, kernel);
+            estimation_local = AlignCloudsLocalDoppler3DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, 
+                                                            trans_sigma / 3.0, vel_sigma / 3.0);
         }
         else{
-            estimation_local = AlignCloudsLocal3DoF(source_c_global, target_c_global, last_icp_pose, kernel);
+            estimation_local = AlignCloudsLocal3DoF(source_c_global, target_c_global, last_icp_pose, trans_sigma / 3.0);
         }
 
         // 전역 좌표계상의 추정된 포즈 계산
@@ -831,25 +1023,87 @@ Eigen::Matrix4d Registration::RegisterFrameLocal3DoF(const std::vector<RadarPoin
     return last_icp_pose;
 }
 
+Eigen::Matrix4d Registration::RegisterFrameLocal6DoF(const std::vector<RadarPoint> &frame,
+                                                const VoxelHashMap &voxel_map,
+                                                const Eigen::Matrix4d &initial_guess,
+                                                const Eigen::Matrix4d &last_pose,
+                                                const double dt,
+                                                double trans_sigma,
+                                                double vel_sigma) {
+    if (voxel_map.Empty()) return initial_guess;
+
+    // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
+    std::vector<RadarPoint> source_local = frame;
+    std::vector<RadarPoint> source_global = source_local;
+    TransformPoints(initial_guess, source_local, source_global);
+
+    // 2. 
+    Eigen::Matrix4d last_icp_pose = initial_guess;
+    
+    int i_iter_num = 0;
+    for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
+        i_iter_num++;
+
+        // Get Correspodence in global frame
+        std::vector<RadarPoint> source_c_global, target_c_global;
+        if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, trans_sigma * 3);
+        } else {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, trans_sigma * 3, gicp_max_point_);
+        }
+
+        Eigen::Matrix4d estimation_local; // 센서 좌표계 상에서의 ICP 미소 변화량
+
+        if(icp_doppler_ == true){
+            Velocity iter_velocity = CalculateVelocity(last_pose.inverse() * last_icp_pose, dt); // last pose 기준 상대속도
+            estimation_local = AlignCloudsLocalDoppler6DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, 
+                                                            trans_sigma / 3.0, vel_sigma / 3.0);
+        }
+        else{
+            estimation_local = AlignCloudsLocal6DoF(source_c_global, target_c_global, last_icp_pose, trans_sigma / 3.0);
+        }
+
+        // 전역 좌표계상의 추정된 포즈 계산
+        last_icp_pose = last_icp_pose * estimation_local;
+
+        // 전역 좌표계 변화량으로 source global 미소이동
+        TransformPoints(last_icp_pose, source_local, source_global);
+
+        
+        // ICP 종료 조건 확인
+        double rot_norm = estimation_local.block<3, 3>(0, 0).eulerAngles(0, 1, 2).norm();
+        double transform_norm = rot_norm + estimation_local.block<3, 1>(0, 3).norm();
+        std::cout<<"Norm "<<transform_norm<<"\t r_norm: "<<rot_norm<<"\t s_norm: "<<estimation_local.block<3, 1>(0, 3).norm()<<std::endl;
+        if (transform_norm < ESTIMATION_THRESHOLD_) break;
+
+    }
+
+    std::cout<<"RegisterFrameLocal6DoF Iter: "<<i_iter_num<<std::endl;
+
+    // (전역 ICP 누적 변화량)
+    return last_icp_pose;
+}
+
 Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
                         const VoxelHashMap &voxel_map,
                         const Eigen::Matrix4d &initial_guess,
                         const Eigen::Matrix4d &last_pose,
                         const double dt,
-                        double max_correspondence_distance,
-                        double trans_kernel)
+                        double trans_sigma,
+                        double vel_sigma)
 {
 
     doppler_gm_th_ = std::max(doppler_gm_th_, DBL_MIN);
     doppler_trans_lambda_ = std::min(std::max(doppler_trans_lambda_, 0.0), 1.0);
 
     if(icp_3dof_ == true){
-        // return RegisterFrame3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, trans_kernel);
-        return RegisterFrameLocal3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, trans_kernel);
+        // return RegisterFrame3DoF(frame, voxel_map, initial_guess, last_pose, dt, trans_sigma * 3.0, trans_sigma / 3.0);
+        return RegisterFrameLocal3DoF(frame, voxel_map, initial_guess, last_pose, dt, trans_sigma, vel_sigma);
     }
     else{
         // ICP 6DOF
-        return RegisterFrame6DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, trans_kernel);
+        // return RegisterFrame6DoF(frame, voxel_map, initial_guess, last_pose, dt, trans_sigma * 3.0, trans_sigma / 3.0);
+        return RegisterFrameLocal6DoF(frame, voxel_map, initial_guess, last_pose, dt, trans_sigma, vel_sigma);
     }
 }
 }
