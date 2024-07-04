@@ -65,18 +65,24 @@ struct RadarPoint {
     Eigen::Vector3d pose;
     Eigen::Matrix4d cov;
 
+    Eigen::Vector3d local;
+    Eigen::Matrix4d sensor_pose;
+
+
     double power;
-    double range;
-    double vel;
-    double azi_angle;
-    double ele_angle;
+    double range; // m
+    double vel; // mps
+    double azi_angle; // deg
+    double ele_angle; // deg
 
     int frame_idx;
     double timestamp;
 
     // 생성자
     RadarPoint()
-        : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()), power(0.0),
+        : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()),
+          local(Eigen::Vector3d::Zero()),
+          sensor_pose(Eigen::Matrix4d::Identity()), power(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
           frame_idx(0), timestamp(0.0) {}
 
@@ -87,6 +93,8 @@ struct RadarPoint {
     void reset() {
         pose.setZero();
         cov.setZero();
+        local.setZero();
+        sensor_pose.setZero();
         power = 0.0;
         range = 0.0;
         vel = 0.0;
@@ -150,6 +158,95 @@ inline Eigen::Matrix4d CalculateTransform(const Velocity& velocity, double delta
     transform.block<3, 1>(0, 3) = translation;
 
     return transform;
+}
+
+inline RadarPoint GetCov(const std::vector<RadarPoint> &points){
+
+    RadarPoint cov_point;
+
+    int num_points = points.size();
+    
+    if(num_points == 0){
+        return cov_point;
+    }
+
+    // 행: 4(x,y,z,0), 열: 포인트 개수  
+    Eigen::Matrix<double, 4, -1> neighbors(4, num_points); 
+    for (int j = 0; j < num_points; j++) {
+      neighbors.col(j) = points[j].pose.homogeneous();
+    }
+
+    // 행 평균
+    Eigen::Vector4d mean = neighbors.rowwise().mean();
+    neighbors.colwise() -= mean.eval();
+    cov_point.cov = neighbors * neighbors.transpose() / num_points;
+    cov_point.pose = mean.head<3>();
+
+    return cov_point;
+}
+
+inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double azim_var_deg, double ele_var_deg){
+    RadarPoint cov_point = point;
+    double dist = cov_point.range;
+    double s_x = std::max(dist * range_var_m, 0.1);
+    double s_y = dist * sin(azim_var_deg / 180 * M_PI); // 0.00873
+    double s_z = dist * sin(ele_var_deg / 180 * M_PI); // 0.01745
+    double elevation = cov_point.ele_angle / 180 * M_PI;
+    double azimuth = cov_point.azi_angle / 180 * M_PI;
+    Eigen::AngleAxisd pitchAngle(Eigen::AngleAxisd(elevation, Eigen::Vector3d::UnitY()));
+    Eigen::AngleAxisd yawAngle(Eigen::AngleAxisd(azimuth, Eigen::Vector3d::UnitZ()));
+    Eigen::Matrix3d R; // Rotation matrix
+    R = yawAngle * pitchAngle;
+
+    Eigen::Matrix3d S; // Scaling matix
+    S << s_x, 0.0, 0.0,
+         0.0, s_y, 0.0,
+         0.0, 0.0, s_z;
+
+    Eigen::Matrix3d cov = R * S;
+    cov_point.cov = Eigen::Matrix4d::Zero();
+    cov_point.cov.block<3, 3>(0, 0) = cov;
+
+    return cov_point;
+}
+
+inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, double azim_var_deg){
+    RadarPoint cov_point = point;
+    double dist = sqrt(cov_point.pose.x()*cov_point.pose.x() + cov_point.pose.y()*cov_point.pose.y());
+    double s_x = std::max(dist * range_var_m, 0.1);
+    double s_y = dist * sin(azim_var_deg / 180 * M_PI);
+    double azimuth = cov_point.azi_angle / 180 * M_PI;
+    Eigen::Matrix2d R;
+    R << cos(azimuth), sin(azimuth),
+        -sin(azimuth), cos(azimuth);
+
+    Eigen::Matrix2d S; // Scaling matix
+    S << s_x, 0.0,
+         0.0, s_y;
+
+    Eigen::Matrix2d cov = R * S;
+    cov_point.cov = Eigen::Matrix4d::Zero();
+    // cov_point.cov.block<2, 2>(0, 0) = cov * cov.transpose();
+    cov_point.cov.block<2, 2>(0, 0) = cov;
+    cov_point.cov(2, 2) = 1.0;
+
+    return cov_point;
+}
+
+inline void CalFramePointCov(std::vector<RadarPoint> &points, double range_var_m, double azim_var_deg, double ele_var_deg){
+    std::transform(points.cbegin(), points.cend(), points.begin(),
+                   [&](const auto &point) {
+                        RadarPoint cov_point = CalPointCov(point, range_var_m, azim_var_deg, ele_var_deg);
+                        return cov_point;
+                   });
+}
+
+inline void CalFramePointCov2d(std::vector<RadarPoint> &points, double range_var_m, double azim_var_deg){
+    std::transform(points.cbegin(), points.cend(), points.begin(),
+                   [&](const auto &point) {
+                        RadarPoint cov_point = CalPointCov2d(point, range_var_m, azim_var_deg);
+                        return cov_point;
+                   });
 }
 
 inline std::string FixFrameId(const std::string &frame_id) {
@@ -232,7 +329,8 @@ inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::Point
 
         RadarPoint iter_point;
 
-        iter_point.pose <<*msg_x, *msg_y, *msg_z;
+        iter_point.pose <<*msg_x, *msg_y, *msg_z; // Canbe Transformed
+        iter_point.local <<*msg_x, *msg_y, *msg_z; // Fixed Local frame. DO NOT CHANGE AFTER IT TODO: Make it const
         iter_point.power = *msg_power;
         iter_point.range = *msg_range;
         iter_point.vel = *msg_vel;

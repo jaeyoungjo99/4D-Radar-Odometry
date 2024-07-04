@@ -14,7 +14,6 @@ struct ResultTuple {
 
 namespace radar_odometry {
 
-
 VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
     const RadarPointVector &points, double max_correspondance_distance) const {
     auto GetClosestNeighboor = [&](const RadarPoint &point) {
@@ -46,6 +45,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
             }
         }
 
+        // 최근접 탐색
         RadarPoint closest_neighbor;
         double closest_distance2 = std::numeric_limits<double>::max();
         for (const auto &neighbor : neighboors) {
@@ -59,6 +59,86 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
         return closest_neighbor;
     };
 
+    // 최대 탐색 거리 제한
+    RadarPointVector source, target;
+    for (const auto &point : points) {
+        RadarPoint closest_neighboors = GetClosestNeighboor(point);
+        if ((closest_neighboors.pose - point.pose).norm() < max_correspondance_distance) {
+            source.emplace_back(point);
+            target.emplace_back(closest_neighboors);
+        }
+    }
+
+    return std::make_tuple(source, target);
+}
+
+VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
+    const RadarPointVector &points, double max_correspondance_distance, int max_cov_point) const {
+
+    auto GetClosestNeighboor = [&](const RadarPoint &point) {
+        auto kx = static_cast<int>(point.pose[0] / voxel_size_);
+        auto ky = static_cast<int>(point.pose[1] / voxel_size_);
+        auto kz = static_cast<int>(point.pose[2] / voxel_size_);
+        std::vector<Voxel> voxels;
+        voxels.reserve(27);
+        for (int i = kx - 1; i < kx + 1 + 1; ++i) {
+            for (int j = ky - 1; j < ky + 1 + 1; ++j) {
+                for (int k = kz - 1; k < kz + 1 + 1; ++k) {
+                    voxels.emplace_back(i, j, k);
+                }
+            }
+        }
+
+        using RadarPointVector = std::vector<RadarPoint>;
+        RadarPointVector neighboors;
+        neighboors.reserve(27 * max_points_per_voxel_);
+        for (const auto &voxel : voxels) {
+            auto search = map_.find(voxel);
+            if (search != map_.end()) {
+                const auto &points = search->second.points;
+                if (!points.empty()) {
+                    for (const auto &point : points) {
+                        neighboors.emplace_back(point);
+                    }
+                }
+            }
+        }
+
+        // 비교 함수: a가 b보다 멀리 있으면 true를 반환
+        auto compare = [&](const std::pair<double, RadarPoint> &a, const std::pair<double, RadarPoint> &b) {
+            return a.first > b.first;
+        };
+
+        // 우선순위 큐 선언
+        std::priority_queue<std::pair<double, RadarPoint>, std::vector<std::pair<double, RadarPoint>>, decltype(compare)> pq(compare);
+
+        // 모든 이웃 포인트에 대해
+        for (const auto &neighbor : neighboors) {
+            double distance = (neighbor.pose - point.pose).norm();
+
+            if(distance < max_correspondance_distance){
+                if (pq.size() < max_cov_point) {
+                    pq.push(std::make_pair(distance, neighbor));
+                } else if (distance < pq.top().first) {
+                    pq.pop();
+                    pq.push(std::make_pair(distance, neighbor));
+                }
+            }
+        }
+
+        // 우선순위 큐에서 최근접 포인트들을 추출
+        RadarPointVector closest_neighboors;
+        while (!pq.empty()) {
+            closest_neighboors.push_back(pq.top().second);
+            pq.pop();
+        }
+
+        RadarPoint closest_neighbor = GetCov(closest_neighboors);
+
+        return closest_neighbor;
+    };
+
+    // 최대 탐색 거리 제한
     RadarPointVector source, target;
     for (const auto &point : points) {
         RadarPoint closest_neighboors = GetClosestNeighboor(point);
@@ -97,8 +177,9 @@ void VoxelHashMap::Update(const RadarPointVector &points, const Eigen::Matrix4d 
     
     std::transform(points.cbegin(), points.cend(), points_transformed.begin(),
                    [&](const RadarPoint &point) {
-                       RadarPoint transformed_point = point;
-                       transformed_point.pose = rotation * point.pose + translation;
+                       RadarPoint transformed_point = point; // 속성 복사
+                       transformed_point.sensor_pose = pose; // 센서 위치 저장
+                       transformed_point.pose = rotation * point.pose + translation; // 위치만 변경
                        return transformed_point;
                    });
 

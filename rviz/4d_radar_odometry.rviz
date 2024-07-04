@@ -242,7 +242,7 @@ Visualization Manager:
         Head Radius: 1
         Shaft Length: 1.5
         Shaft Radius: 0.5
-        Value: Arrow
+        Value: Axes
       Topic: /radar_odom
       Unreliable: true
       Value: true
@@ -303,20 +303,26 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -1.5200002193450928
-      Class: rviz/TopDownOrtho
+      Class: rviz/ThirdPersonFollower
+      Distance: 50.471282958984375
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 7.250072479248047
+      Pitch: 0.08539848029613495
       Target Frame: afi910
-      X: 12.541142463684082
-      Y: -1.0824552774429321
+      Yaw: 3.1154003143310547
     Saved: ~
 Window Geometry:
   Displays:
@@ -336,5 +342,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1797
-  X: -14
-  Y: -12
+  X: 3
+  Y: -42

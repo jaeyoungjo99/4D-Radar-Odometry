@@ -256,6 +256,9 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/elevation_variance_deg");
         }
 
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "gicp_max_point", config_.gicp_max_point) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/gicp_max_point");
+        }
 
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }

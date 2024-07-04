@@ -23,41 +23,30 @@ namespace {
 inline double square(double x) { return x * x; }
 
 constexpr int MAX_NUM_ITERATIONS_ = 50;
-constexpr double ESTIMATION_THRESHOLD_ = 0.01;
+constexpr double ESTIMATION_THRESHOLD_ = 0.005;
 
 void TransformPoints(const Eigen::Matrix4d &T, std::vector<RadarPoint> &points) {
     std::transform(points.cbegin(), points.cend(), points.begin(),
                    [&](const auto &point) {
                        Eigen::Vector4d p(point.pose.x(), point.pose.y(), point.pose.z(), 1.0);
                        Eigen::Vector4d p_transformed = T * p;
-                       RadarPoint transformed_point = point;
+                       RadarPoint transformed_point = point; // 모든 속성 복사
                        transformed_point.pose = p_transformed.head<3>();
                        return transformed_point;
                    });
 }
 
-void TransformPoints(const Eigen::Matrix4d &transform, const std::vector<RadarPoint> i_points, std::vector<RadarPoint>& o_points) {
-    o_points.clear();
-    o_points = i_points;
-    
-    // 변환 행렬의 상위 3x3 부분을 회전 행렬로 사용
-    Eigen::Matrix3d rotation = transform.block<3, 3>(0, 0);
+void TransformPoints(const Eigen::Matrix4d &T, const std::vector<RadarPoint> &points, std::vector<RadarPoint> &o_points) {
+    assert(points.size() == o_points.size()); // points와 o_points가 같은 크기를 가지는지 확인
 
-    // 변환 행렬의 상위 3x1 부분을 평행 이동 벡터로 사용
-    Eigen::Vector3d translation = transform.block<3, 1>(0, 3);
-
-    for (size_t i = 0; i < i_points.size(); ++i) {
-        // 입력 포인트를 Eigen::Vector4d 동차 좌표로 변환
-        Eigen::Vector4d input_point(i_points[i].pose.x(), i_points[i].pose.y(), i_points[i].pose.z(), 1.0);
-
-        // 변환 행렬을 사용하여 출력 포인트를 계산
-        Eigen::Vector4d output_point = transform * input_point;
-
-        // 변환된 좌표를 출력 포인트로 저장
-        o_points[i].pose.x() = output_point.x();
-        o_points[i].pose.y() = output_point.y();
-        o_points[i].pose.z() = output_point.z();
-    }
+    std::transform(points.cbegin(), points.cend(), o_points.begin(),
+                   [&](const auto &point) {
+                       Eigen::Vector4d p(point.pose.x(), point.pose.y(), point.pose.z(), 1.0);
+                       Eigen::Vector4d p_transformed = T * p;
+                       RadarPoint transformed_point = point; // 모든 속성 복사
+                       transformed_point.pose = p_transformed.head<3>();
+                       return transformed_point;
+                   });
 }
 
 Eigen::Matrix<double, 6, 1> se3_log(const Eigen::Matrix4d &transform) {
@@ -86,8 +75,9 @@ Eigen::Matrix3d vectorToSkewSymmetricMatrix(const Eigen::Vector3d& vec) {
 
 namespace radar_odometry {
 
-Eigen::Matrix4d Registration::AlignClouds(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignClouds6DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             double th) {
     Eigen::Matrix6d JTJ = Eigen::Matrix6d::Zero();
     Eigen::Vector6d JTr = Eigen::Vector6d::Zero();
@@ -95,6 +85,40 @@ Eigen::Matrix4d Registration::AlignClouds(const std::vector<RadarPoint> &source,
     for (size_t i = 0; i < source.size(); ++i) {
         const Eigen::Vector3d residual = target[i].pose - source[i].pose;
         Eigen::Matrix3_6d J_r;
+
+        double range_weight = 1.0;
+
+        if(icp_type_ == IcpType::P2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose(); // Only Source Point Cov
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+
+
+        }
+        else if (icp_type_ == IcpType::PCOV2PCOV){
+
+            Eigen::Matrix4d RCR;
+            RCR = target[i].sensor_pose.matrix() * target[i].cov + target[i].sensor_pose.matrix().transpose() + 
+                 iter_pose.matrix() * source[i].cov * iter_pose.matrix().transpose();
+            RCR(3, 3) = 1.0;
+
+            Eigen::Matrix4d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(3, 3) = 0.0f;
+
+            Eigen::Vector4d error = Eigen::Vector4d::Zero();
+            error.head<3>() = (target[i].pose - source[i].pose);
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+        }
 
         // [ I(3x3), -(T p_k)^ ]
         J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
@@ -118,24 +142,18 @@ Eigen::Matrix4d Registration::AlignClouds(const std::vector<RadarPoint> &source,
     return transformation;
 }
 
-Eigen::Matrix4d Registration::AlignCloudsDoppler(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsDoppler6DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             const Velocity &sensor_velocity,
-                            double th,
-                            double doppler_gm_th,
-                            double doppler_trans_lambda) {
-    Eigen::Matrix6d JTJ = Eigen::Matrix6d::Zero();
-    Eigen::Vector6d JTr = Eigen::Vector6d::Zero();
-
-    Eigen::Matrix6d JvTJv = Eigen::Matrix6d::Zero();
-    Eigen::Vector6d JvTrv = Eigen::Vector6d::Zero();
+                            double th) {
 
     Eigen::Matrix6d JTJ_tot = Eigen::Matrix6d::Zero();
     Eigen::Vector6d JTr_tot = Eigen::Vector6d::Zero();
 
-    Eigen::Vector3d est_sensor_vel_vehicle_coord = sensor_velocity.linear;
-    // Eigen::Vector3d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y(), 0.0);
-    Eigen::Vector3d ego_to_sensor_translation(3.5, 0.0, 0.5);
+    // Eigen::Vector3d est_sensor_vel_vehicle_coord = sensor_velocity.linear;
+    Eigen::Vector3d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y(), 0.0);
+    // Eigen::Vector3d ego_to_sensor_translation(3.5, 0.0, 0.5);
+    Eigen::Vector3d ego_to_sensor_translation(3.5, 0.0, 0.0);
 
     double vel_diff_sum = 0.0;
 
@@ -145,25 +163,21 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler(const std::vector<RadarPoint> &
 
         // 1. Translation
         // [ I(3x3), -(T p_k)^ ]
-        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity(); // Global coordinate
         J_r.block<3, 3>(0, 3) = -1.0 * vectorToSkewSymmetricMatrix(source[i].pose);
 
         double weight_t = square(th) / square(th + residual.squaredNorm());
-
-        JTJ.noalias() += J_r.transpose() * weight_t * J_r;
-        JTr.noalias() += J_r.transpose() * weight_t * residual;
-
         // 2. Velocity
         // V_D_k - V_est(T)
         const double p_azim_rad = source[i].azi_angle * M_PI / 180.0f; // 정면 0 반시계
         const double p_ele_rad = source[i].ele_angle * M_PI / 180.0f; // 정면 0 윗방향
 
-        Eigen::Vector3d point_direction_vector(cos(p_ele_rad) * cos(p_azim_rad),
-                                         cos(p_ele_rad) * sin(p_azim_rad), 
-                                         sin(p_ele_rad));
+        // Eigen::Vector3d point_direction_vector(cos(p_ele_rad) * cos(p_azim_rad),
+        //                                  cos(p_ele_rad) * sin(p_azim_rad), 
+        //                                  sin(p_ele_rad));
         
 
-        // Eigen::Vector3d point_direction_vector(cos(p_azim_rad),sin(p_azim_rad), 0.0);
+        Eigen::Vector3d point_direction_vector(cos(p_azim_rad),sin(p_azim_rad), 0.0);
 
 
         // 차량의 속도 벡터와 관측 각도를 통해 도플러 속도 예상. 전진시 음수
@@ -177,45 +191,27 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler(const std::vector<RadarPoint> &
         // [ - d_k / dt , -d_k x t_s / dt ]
         J_v.block<1,3>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
         J_v.block<1,3>(0,3) = - (point_direction_vector.cross(ego_to_sensor_translation)).transpose() / sensor_velocity.time_diff_sec;
+        // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO:
 
-        double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual));
-
-        JvTJv.noalias() += J_v.transpose() * weight_v * J_v; // 6x1 1x6
-        JvTrv.noalias() += J_v.transpose() * weight_v * vel_residual; // 6x1 1x1
-
+        double weight_v = square(doppler_gm_th_) / square(doppler_gm_th_ + square(vel_residual));
 
         Eigen::Matrix4_6d J_tot;
         Eigen::Matrix1_4d R_tot;
     
-        J_tot.block<3,6>(0,0) = J_r * sqrt(weight_t * (1.0 - doppler_trans_lambda));
-        J_tot.block<1,6>(2,0) = J_v * sqrt(weight_v * doppler_trans_lambda);
+        J_tot.block<3,6>(0,0) = J_r * sqrt(weight_t * (1.0 - doppler_trans_lambda_));
+        J_tot.block<1,6>(2,0) = J_v * sqrt(weight_v * doppler_trans_lambda_);
 
-        R_tot.block<1,3>(0,0) << residual.x() * sqrt(weight_t * (1.0 - doppler_trans_lambda)), 
-                                 residual.y() * sqrt(weight_t * (1.0 - doppler_trans_lambda)),
-                                 residual.z() * sqrt(weight_t * (1.0 - doppler_trans_lambda));
-        R_tot(0,3) = vel_residual * sqrt(weight_v * doppler_trans_lambda);
+        R_tot.block<1,3>(0,0) << residual.x() * sqrt(weight_t * (1.0 - doppler_trans_lambda_)), 
+                                 residual.y() * sqrt(weight_t * (1.0 - doppler_trans_lambda_)),
+                                 residual.z() * sqrt(weight_t * (1.0 - doppler_trans_lambda_));
+        R_tot(0,3) = vel_residual * sqrt(weight_v * doppler_trans_lambda_);
 
         JTJ_tot.noalias() += J_tot.transpose() * J_tot; // 6x4 4x6
         JTr_tot.noalias() += J_tot.transpose() * R_tot.transpose(); // 6x4 4x1
     }
 
-    std::cout<<"Vel diff mean: "<<vel_diff_sum / source.size()<<std::endl;
-
-    const Eigen::Vector6d x_t = JTJ.ldlt().solve(JTr);
-    const Eigen::Vector6d x_v = JvTJv.ldlt().solve(JvTrv);
-    // const Eigen::Vector6d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
-
     Eigen::Matrix6d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
     const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
-
-    // std::cout<<"x_t"<<std::endl;
-    // std::cout<<x_t.transpose()<<std::endl;
-
-    // std::cout<<"x_v"<<std::endl;
-    // std::cout<<x_v.transpose()<<std::endl;
-
-    // std::cout<<"x_tot"<<std::endl;
-    // std::cout<<x_tot.transpose()<<std::endl;
 
 
     Eigen::Vector3d rotation_vector = x_tot.tail<3>(); // rpy
@@ -228,6 +224,7 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler(const std::vector<RadarPoint> &
 
 Eigen::Matrix4d Registration::AlignClouds3DoF(const std::vector<RadarPoint> &source,
                                 const std::vector<RadarPoint> &target,
+                                Eigen::Matrix4d &iter_pose,
                                 double th) {
     Eigen::Matrix3d JTJ = Eigen::Matrix3d::Zero();
     Eigen::Vector3d JTr = Eigen::Vector3d::Zero();
@@ -236,9 +233,49 @@ Eigen::Matrix4d Registration::AlignClouds3DoF(const std::vector<RadarPoint> &sou
         const Eigen::Vector2d residual(target[i].pose.x() - source[i].pose.x(), target[i].pose.y() - source[i].pose.y());
         Eigen::Matrix2_3d J_r;
 
+
         if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
-        
-        double range_weight =  std::max(0.0, 1.0 - source[i].range * target[i].range / square(150.0));
+
+        double range_weight = 1.0;
+
+        if(icp_type_ == IcpType::P2PCOV){
+
+            Eigen::Matrix3d test_iter_pose = Eigen::Matrix3d::Identity();
+            test_iter_pose.block<2,2>(0,0) = iter_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d RCR;
+            RCR = test_iter_pose.matrix() * source[i].cov.block<3,3>(0,0) * test_iter_pose.matrix().transpose(); // Only Source Point Cov
+            RCR(2, 2) = 1.0;
+
+            Eigen::Matrix3d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(2, 2) = 0.0f;
+
+            Eigen::Vector3d error = Eigen::Vector3d::Zero();
+            error.head<2>() = (target[i].pose.head<2>() - source[i].pose.head<2>());
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+
+        }
+        else if (icp_type_ == IcpType::PCOV2PCOV){
+            Eigen::Matrix3d test_iter_pose = Eigen::Matrix3d::Identity();
+            test_iter_pose.block<2,2>(0,0) = iter_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d test_target_pose = Eigen::Matrix3d::Identity();
+            test_target_pose.block<2,2>(0,0) = target[i].sensor_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d RCR;
+            RCR = test_target_pose.matrix() * target[i].cov.block<3,3>(0,0) + test_target_pose.matrix().transpose() + 
+                 test_iter_pose.matrix() * source[i].cov.block<3,3>(0,0) * test_iter_pose.matrix().transpose();
+            RCR(2, 2) = 1.0;
+
+            Eigen::Matrix3d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(2, 2) = 0.0f;
+
+            Eigen::Vector3d error = Eigen::Vector3d::Zero();
+            error.head<2>() = (target[i].pose.head<2>() - source[i].pose.head<2>());
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+        }
 
         // [ I(2x2), -(T p_k)^ ]
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
@@ -249,8 +286,6 @@ Eigen::Matrix4d Registration::AlignClouds3DoF(const std::vector<RadarPoint> &sou
         JTJ.noalias() += J_r.transpose() * weight * J_r;
         JTr.noalias() += J_r.transpose() * weight * residual;
     }
-
-    // const Eigen::Vector3d x = JTJ.ldlt().solve(JTr);
 
     Eigen::Matrix3d JTJ_diag = JTJ.diagonal().asDiagonal();
     const Eigen::Vector3d x = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
@@ -265,16 +300,9 @@ Eigen::Matrix4d Registration::AlignClouds3DoF(const std::vector<RadarPoint> &sou
 
 Eigen::Matrix4d Registration::AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
-                            double th,
-                           double doppler_gm_th,
-                           double doppler_trans_lambda) {
-
-    Eigen::Matrix3d JTJ = Eigen::Matrix3d::Zero();
-    Eigen::Vector3d JTr = Eigen::Vector3d::Zero();
-
-    Eigen::Matrix3d JvTJv = Eigen::Matrix3d::Zero();
-    Eigen::Vector3d JvTrv = Eigen::Vector3d::Zero();
+                            double th) {
 
     Eigen::Matrix3d JTJ_tot = Eigen::Matrix3d::Zero();
     Eigen::Vector3d JTr_tot = Eigen::Vector3d::Zero();
@@ -282,26 +310,60 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler3DoF(const std::vector<RadarPoin
     Eigen::Vector2d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y()); // TODO
     Eigen::Vector2d ego_to_sensor_translation(3.5, 0.0);
 
-    double vel_diff_sum = 0.0;
-
-
     for (size_t i = 0; i < source.size(); ++i) {
         const Eigen::Vector2d residual(target[i].pose.x() - source[i].pose.x(), target[i].pose.y() - source[i].pose.y());
         Eigen::Matrix2_3d J_r;
 
         if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
 
-        double range_weight =  std::max(0.0, 1.0 - source[i].range * target[i].range / square(150.0));
-        
+        // double range_weight =  std::max(0.0, 1.0 - source[i].range * target[i].range / square(150.0));
+        double range_weight = 1.0;
+
+        if(icp_type_ == IcpType::P2PCOV){
+
+            Eigen::Matrix3d test_iter_pose = Eigen::Matrix3d::Identity();
+            test_iter_pose.block<2,2>(0,0) = iter_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d RCR;
+            RCR = test_iter_pose.matrix() * source[i].cov.block<3,3>(0,0) * test_iter_pose.matrix().transpose(); // Only Source Point Cov
+            RCR(2, 2) = 1.0;
+
+            Eigen::Matrix3d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(2, 2) = 0.0f;
+
+            Eigen::Vector3d error = Eigen::Vector3d::Zero();
+            error.head<2>() = (target[i].pose.head<2>() - source[i].pose.head<2>());
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+
+        }
+        else if (icp_type_ == IcpType::PCOV2PCOV){
+            Eigen::Matrix3d test_iter_pose = Eigen::Matrix3d::Identity();
+            test_iter_pose.block<2,2>(0,0) = iter_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d test_target_pose = Eigen::Matrix3d::Identity();
+            test_target_pose.block<2,2>(0,0) = target[i].sensor_pose.block<2,2>(0,0);
+
+            Eigen::Matrix3d RCR;
+            RCR = test_target_pose.matrix() * target[i].cov.block<3,3>(0,0) + test_target_pose.matrix().transpose() + 
+                 test_iter_pose.matrix() * source[i].cov.block<3,3>(0,0) * test_iter_pose.matrix().transpose();
+            RCR(2, 2) = 1.0;
+
+            Eigen::Matrix3d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
+            mahalanobis(2, 2) = 0.0f;
+
+            Eigen::Vector3d error = Eigen::Vector3d::Zero();
+            error.head<2>() = (target[i].pose.head<2>() - source[i].pose.head<2>());
+
+            range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
+        }
+
         // 1. Translation
         // [ I(3x3), -(T p_k)^ ]
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
         J_r.block<2, 1>(0, 2) << -source[i].pose(1), source[i].pose(0);
 
         double weight_t = square(th) / square(th + residual.squaredNorm()) * range_weight;
-
-        JTJ.noalias() += J_r.transpose() * weight_t * J_r;
-        JTr.noalias() += J_r.transpose() * weight_t * residual;
 
         // 2. Velocity
         // V_D_k - V_est(T)
@@ -316,43 +378,35 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler3DoF(const std::vector<RadarPoin
         double est_point_vel = - point_direction_vector.dot(est_sensor_vel_vehicle_coord);
         double vel_residual = source[i].vel - est_point_vel;
 
-        vel_diff_sum += fabs(vel_residual);
-
         Eigen::Matrix1_3d J_v;
 
         // [ - d_k / dt , -d_k x t_s / dt ]
         J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
-        J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - 
-                      point_direction_vector.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
+        // J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - 
+        //               point_direction_vector.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
+        J_v(0,2) = 0.0; // TODO:
 
-        double weight_v = square(doppler_gm_th) / square(doppler_gm_th + square(vel_residual)) * range_weight;
-
-        JvTJv.noalias() += J_v.transpose() * weight_v * J_v; // 3x1 1x3
-        JvTrv.noalias() += J_v.transpose() * weight_v * vel_residual; // 3x1 1x1
-
-        //
+        double weight_v = square(doppler_gm_th_) / square(doppler_gm_th_ + square(vel_residual)) * range_weight;
 
         Eigen::Matrix3d J_tot;
         Eigen::Matrix1_3d R_tot;
-    
-        J_tot.block<2,3>(0,0) = J_r * sqrt(weight_t * (1.0 - doppler_trans_lambda));
-        J_tot.block<1,3>(2,0) = J_v * sqrt(weight_v * doppler_trans_lambda);
 
-        R_tot.block<1,2>(0,0) << residual.x() * sqrt(weight_t * (1.0 - doppler_trans_lambda)),
-                                 residual.y() * sqrt(weight_t * (1.0 - doppler_trans_lambda));
-        R_tot(0,2) = vel_residual * sqrt(weight_v * doppler_trans_lambda);
+        double sqrt_trans_weight = sqrt(weight_t * (1.0 - doppler_trans_lambda_));
+        double sqrt_vel_weight = sqrt(weight_v * doppler_trans_lambda_);
+    
+        J_tot.block<2,3>(0,0) = J_r * sqrt_trans_weight;
+        J_tot.block<1,3>(2,0) = J_v * sqrt_vel_weight;
+
+        R_tot.block<1,2>(0,0) << residual.x() * sqrt_trans_weight,
+                                 residual.y() * sqrt_trans_weight;
+        R_tot(0,2) = vel_residual * sqrt_vel_weight;
 
         JTJ_tot.noalias() += J_tot.transpose() * J_tot; // 3x3 3x3
         JTr_tot.noalias() += J_tot.transpose() * R_tot.transpose(); // 3x3 3x1
 
     }
 
-    // std::cout<<"Vel diff mean: "<<vel_diff_sum / source.size()<<std::endl;
-
     Eigen::Matrix3d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
-
-    const Eigen::Vector3d x_t = JTJ.ldlt().solve(JTr);
-    const Eigen::Vector3d x_v = JvTJv.ldlt().solve(JvTrv);
     // const Eigen::Vector3d x_tot = JTJ_tot.ldlt().solve(JTr_tot);
     const Eigen::Vector3d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
 
@@ -366,40 +420,147 @@ Eigen::Matrix4d Registration::AlignCloudsDoppler3DoF(const std::vector<RadarPoin
     return transformation;
 }
 
+Eigen::Matrix4d Registration::AlignCloudsLocal3DoF(const std::vector<RadarPoint> &source,
+                                const std::vector<RadarPoint> &target,
+                                Eigen::Matrix4d &iter_pose,
+                                double th) {
 
-Eigen::Matrix4d Registration::RegisterFrame6DoF(const std::vector<RadarPoint> &frame,
-                              const VoxelHashMap &voxel_map,
-                              const Eigen::Matrix4d &initial_guess,
-                              double max_correspondence_distance,
-                              double kernel) {
-    if (voxel_map.Empty()) return initial_guess;
+    Eigen::Matrix3d JTJ = Eigen::Matrix3d::Zero();
+    Eigen::Vector3d JTr = Eigen::Vector3d::Zero();
 
-    std::vector<RadarPoint> source = frame;
-    TransformPoints(initial_guess, source);
+    for (size_t i = 0; i < source.size(); ++i) {
+        Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
+        Eigen::Vector4d transformed_hom_point = iter_pose.inverse() * hom_point;
+        
+        const Eigen::Vector2d target_local = transformed_hom_point.head<2>();
+        const Eigen::Vector2d residual_local = target_local - source[i].local.head<2>();
 
-    Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
-    for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
-        Eigen::Matrix4d estimation = AlignClouds(src, tgt, kernel);
-        TransformPoints(estimation, source);
-        T_icp = estimation * T_icp;
-        if ((estimation.block<3, 3>(0, 0).eulerAngles(0, 1, 2).norm() + estimation.block<3, 1>(0, 3).norm()) < ESTIMATION_THRESHOLD_) break;
+        Eigen::Matrix2_3d J_r;
+
+        if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
+
+        // [ I(2x2), -(T p_k)^ ]
+        J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
+        J_r.block<2, 1>(0, 2) << -source[i].local(1), source[i].local(0); // 센서좌표계 SkewSymmetric
+
+        // GM Kernel
+        double weight = square(th) / square(th + residual_local.squaredNorm());
+
+        JTJ.noalias() += J_r.transpose() * weight * J_r;
+        JTr.noalias() += J_r.transpose() * weight * residual_local;
     }
-    return T_icp * initial_guess;
+
+    // LM Optimization
+    Eigen::Matrix3d JTJ_diag = JTJ.diagonal().asDiagonal();
+    const Eigen::Vector3d x = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
+
+    Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
+    transformation.block<2, 2>(0, 0) = Eigen::Rotation2Dd(x(2)).toRotationMatrix();
+    transformation(0, 3) = x(0);
+    transformation(1, 3) = x(1);
+
+    // Source Point 의 센서 좌표 기준 미소 transformation
+    return transformation;
 }
 
-Eigen::Matrix4d Registration::RegisterFrameDoppler6DoF(const std::vector<RadarPoint> &frame,
-                              const VoxelHashMap &voxel_map,
-                              const Eigen::Matrix4d &initial_guess,
-                              const Eigen::Matrix4d &last_pose,
-                              const double dt,
-                              double max_correspondence_distance,
-                              double kernel) {
+Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
+                            const Velocity &sensor_velocity,
+                            double th) {
 
+    Eigen::Matrix3d JTJ_tot = Eigen::Matrix3d::Zero();
+    Eigen::Vector3d JTr_tot = Eigen::Vector3d::Zero();
+
+    Eigen::Vector2d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y()); // TODO
+    Eigen::Vector2d ego_to_sensor_translation(3.5, 0.0);
+
+    for (size_t i = 0; i < source.size(); ++i) {
+        Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
+        Eigen::Vector4d transformed_hom_point = iter_pose.inverse() * hom_point;
+        
+        const Eigen::Vector2d target_local = transformed_hom_point.head<2>();
+        const Eigen::Vector2d residual_local = target_local - source[i].local.head<2>();
+
+        Eigen::Matrix2_3d J_r;
+
+        if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
+
+    
+        // 1. Translation
+        // [ I(3x3), -(T p_k)^ ]
+        J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
+        J_r.block<2, 1>(0, 2) << -source[i].local(1), source[i].local(0); // 센서좌표계 SkewSymmetric
+
+        double weight_t = square(th) / square(th + residual_local.squaredNorm());
+
+        // 2. Velocity
+        // V_D_k - V_est(T)
+        const double p_azim_rad = source[i].azi_angle * M_PI / 180.0f; // 정면 0 반시계
+        const double p_ele_rad = source[i].ele_angle * M_PI / 180.0f; // 정면 0 윗방향
+
+        Eigen::Vector2d point_direction_vector(cos(p_azim_rad), sin(p_azim_rad));
+
+
+
+        // 차량의 속도 벡터와 관측 각도를 통해 도플러 속도 예상. 전진시 음수
+        double est_point_vel = - point_direction_vector.dot(est_sensor_vel_vehicle_coord);
+        double vel_residual = source[i].vel - est_point_vel;
+
+        Eigen::Matrix1_3d J_v;
+
+        // [ - d_k / dt , -d_k x t_s / dt ]
+        J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
+        J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - 
+                      point_direction_vector.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
+
+        double weight_v = square(doppler_gm_th_) / square(doppler_gm_th_ + square(vel_residual));
+
+        Eigen::Matrix3d J_tot;
+        Eigen::Matrix1_3d R_tot;
+
+        double sqrt_trans_weight = sqrt(weight_t * (1.0 - doppler_trans_lambda_));
+        double sqrt_vel_weight = sqrt(weight_v * doppler_trans_lambda_);
+    
+        J_tot.block<2,3>(0,0) = J_r * sqrt_trans_weight;
+        J_tot.block<1,3>(2,0) = J_v * sqrt_vel_weight;
+
+        R_tot.block<1,2>(0,0) << residual_local.x() * sqrt_trans_weight,
+                                 residual_local.y() * sqrt_trans_weight;
+        R_tot(0,2) = vel_residual * sqrt_vel_weight;
+
+        JTJ_tot.noalias() += J_tot.transpose() * J_tot; // 3x3 3x3
+        JTr_tot.noalias() += J_tot.transpose() * R_tot.transpose(); // 3x3 3x1
+
+    }
+
+    // LM Optimization
+    Eigen::Matrix3d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
+    const Eigen::Vector3d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
+
+    Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
+
+    transformation.block<2, 2>(0, 0) = Eigen::Rotation2Dd(x_tot(2)).toRotationMatrix();
+    transformation(0, 3) = x_tot(0);
+    transformation(1, 3) = x_tot(1);
+
+
+    return transformation;
+}
+
+Eigen::Matrix4d Registration::RegisterFrame6DoF(const std::vector<RadarPoint> &frame,
+                                                const VoxelHashMap &voxel_map,
+                                                const Eigen::Matrix4d &initial_guess,
+                                                const Eigen::Matrix4d &last_pose,
+                                                const double dt,
+                                                double max_correspondence_distance,
+                                                double kernel) {
     if (voxel_map.Empty()) return initial_guess;
 
     std::vector<RadarPoint> source = frame;
     TransformPoints(initial_guess, source);
+
+    CalFramePointCov(source, range_variance_m_, azimuth_variance_deg_, elevation_variance_deg_);
 
     Velocity iter_velocity;
     Eigen::Matrix4d delta_pose = Eigen::Matrix4d::Identity();
@@ -407,12 +568,26 @@ Eigen::Matrix4d Registration::RegisterFrameDoppler6DoF(const std::vector<RadarPo
 
     Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
 
-        delta_pose = last_pose.inverse() * last_icp_pose;
-        iter_velocity = CalculateVelocity(delta_pose, dt);
+        std::vector<RadarPoint> src, tgt;
+        if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
+            std::tie(src, tgt) = voxel_map.GetCorrespondences(source, max_correspondence_distance);
+        } else {
+            std::tie(src, tgt) = voxel_map.GetCorrespondencesCov(source, max_correspondence_distance, gicp_max_point_);
+        }
 
-        Eigen::Matrix4d estimation = AlignCloudsDoppler(src, tgt, iter_velocity, kernel, doppler_gm_th_, doppler_trans_lambda_);
+        Eigen::Matrix4d estimation;
+
+        if(icp_doppler_ == true){
+            delta_pose = last_pose.inverse() * last_icp_pose;
+            iter_velocity = CalculateVelocity(delta_pose, dt);
+
+            estimation = AlignCloudsDoppler6DoF(src, tgt, iter_velocity, kernel);
+        }
+        else{
+            estimation = AlignClouds6DoF(src, tgt, last_icp_pose, kernel);
+        }
+         
         TransformPoints(estimation, source);
         T_icp = estimation * T_icp;
 
@@ -424,64 +599,138 @@ Eigen::Matrix4d Registration::RegisterFrameDoppler6DoF(const std::vector<RadarPo
 }
 
 Eigen::Matrix4d Registration::RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
-                                  const VoxelHashMap &voxel_map,
-                                  const Eigen::Matrix4d &initial_guess,
-                                  double max_correspondence_distance,
-                                  double kernel) {
+                                                const VoxelHashMap &voxel_map,
+                                                const Eigen::Matrix4d &initial_guess,
+                                                const Eigen::Matrix4d &last_pose,
+                                                const double dt,
+                                                double max_correspondence_distance,
+                                                double kernel) {
     if (voxel_map.Empty()) return initial_guess;
 
-    std::vector<RadarPoint> source = frame;
-    TransformPoints(initial_guess, source);
+    // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
+    std::vector<RadarPoint> source_global = frame;
+    CalFramePointCov2d(source_global, range_variance_m_, azimuth_variance_deg_);
+    
+    TransformPoints(initial_guess, source_global);
 
-    Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity();
+    // 2. 
+
+    /*
+    Doppler Alignment를 위해서는 현재 추정되고 있는 센서의 velocity가 필요함 (vx, vy, vz, dt)
+    */
+
+    Eigen::Matrix4d last_icp_pose = initial_guess;
+    
+    Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity(); // 전역 좌표계 상에서의 ICP 누적 변화량
+    int i_iter_num = 0;
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
-        Eigen::Matrix4d estimation = AlignClouds3DoF(src, tgt, kernel);
-        TransformPoints(estimation, source);
-        T_icp = estimation * T_icp;
+        i_iter_num++;
 
-        double yaw = std::atan2(estimation(1, 0), estimation(0, 0));
-        if ((std::abs(yaw) + estimation.block<2, 1>(0, 3).norm()) < ESTIMATION_THRESHOLD_) break;
+        // Get Correspodence in global frame
+        std::vector<RadarPoint> source_c_global, target_c_global;
+        if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, max_correspondence_distance);
+        } else {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, max_correspondence_distance, gicp_max_point_);
+        }
+
+        Eigen::Matrix4d estimation_global; // 전역 좌표계 상에서의 ICP 미소 변화량
+
+        if(icp_doppler_ == true){
+            Velocity iter_velocity = CalculateVelocity(last_pose.inverse() * last_icp_pose, dt); // last pose 기준 상대속도
+            estimation_global = AlignCloudsDoppler3DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, kernel);
+        }
+        else{
+            estimation_global = AlignClouds3DoF(source_c_global, target_c_global, last_icp_pose, kernel);
+        }
+
+        // 전역 좌표계 변화량으로 source global 미소이동
+        TransformPoints(estimation_global, source_global);
+
+        // 전역 좌표계 ICP 변화량 누적
+        T_icp = estimation_global * T_icp;
+
+        // 전역 좌표계상의 추정된 포즈 계산
+        last_icp_pose = T_icp * initial_guess;
+        
+        // ICP 종료 조건 확인
+        double yaw = std::atan2(estimation_global(1, 0), estimation_global(0, 0));
+        if ((std::abs(yaw) + estimation_global.block<2, 1>(0, 3).norm()) < ESTIMATION_THRESHOLD_) break;
 
     }
+
+    std::cout<<"RegisterFrame3DoF Iter: "<<i_iter_num<<std::endl;
+
+    // (전역 ICP 누적 변화량)
     return T_icp * initial_guess;
 }
 
-Eigen::Matrix4d Registration::RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
-                           const VoxelHashMap &voxel_map,
-                           const Eigen::Matrix4d &initial_guess,
-                           const Eigen::Matrix4d &last_pose,
-                           const double dt,
-                           double max_correspondence_distance,
-                           double kernel) {
-
+Eigen::Matrix4d Registration::RegisterFrameLocal3DoF(const std::vector<RadarPoint> &frame,
+                                                const VoxelHashMap &voxel_map,
+                                                const Eigen::Matrix4d &initial_guess,
+                                                const Eigen::Matrix4d &last_pose,
+                                                const double dt,
+                                                double max_correspondence_distance,
+                                                double kernel) {
     if (voxel_map.Empty()) return initial_guess;
 
-    std::vector<RadarPoint> source = frame;
-    TransformPoints(initial_guess, source);
+    // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
+    std::vector<RadarPoint> source_local = frame;
+    CalFramePointCov2d(source_local, range_variance_m_, azimuth_variance_deg_);
+    
+    std::vector<RadarPoint> source_global = source_local;
+    // TransformPoints(initial_guess, source_global);
+    TransformPoints(initial_guess, source_local, source_global);
 
-    Velocity iter_velocity;
-    Eigen::Matrix4d delta_pose = Eigen::Matrix4d::Identity();
+    // 2. 
+    /*
+    Doppler Alignment를 위해서는 현재 추정되고 있는 센서의 velocity가 필요함 (vx, vy, vz, dt)
+    */
+
     Eigen::Matrix4d last_icp_pose = initial_guess;
-
-    Eigen::Matrix4d T_icp = Eigen::Matrix4d::Identity(); // Global
+    
+    int i_iter_num = 0;
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
+        i_iter_num++;
 
-        delta_pose = last_pose.inverse() * last_icp_pose;
-        iter_velocity = CalculateVelocity(delta_pose, dt);
+        // Get Correspodence in global frame
+        std::vector<RadarPoint> source_c_global, target_c_global;
+        if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, max_correspondence_distance);
+        } else {
+            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, max_correspondence_distance, gicp_max_point_);
+        }
 
-        Eigen::Matrix4d estimation = AlignCloudsDoppler3DoF(src, tgt, iter_velocity, kernel, doppler_gm_th_, doppler_trans_lambda_);
-        TransformPoints(estimation, source);
-        T_icp = estimation * T_icp;
+        Eigen::Matrix4d estimation_local; // 센서 좌표계 상에서의 ICP 미소 변화량
 
-        last_icp_pose = T_icp * initial_guess;
+        if(icp_doppler_ == true){
+            Velocity iter_velocity = CalculateVelocity(last_pose.inverse() * last_icp_pose, dt); // last pose 기준 상대속도
+            estimation_local = AlignCloudsLocalDoppler3DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, kernel);
+        }
+        else{
+            estimation_local = AlignCloudsLocal3DoF(source_c_global, target_c_global, last_icp_pose, kernel);
+        }
 
-        double yaw = std::atan2(estimation(1, 0), estimation(0, 0));
-        if ((std::abs(yaw) + estimation.block<2, 1>(0, 3).norm()) < ESTIMATION_THRESHOLD_) break;
+        // 전역 좌표계상의 추정된 포즈 계산
+        last_icp_pose = initial_guess * estimation_local;
+
+        // 전역 좌표계 변화량으로 source global 미소이동
+        TransformPoints(last_icp_pose, source_local, source_global);
+
+
+        
+        // ICP 종료 조건 확인
+        double yaw = std::atan2(estimation_local(1, 0), estimation_local(0, 0));
+        double transform_norm = std::abs(yaw) + estimation_local.block<2, 1>(0, 3).norm();
+        std::cout<<"transform_norm "<<transform_norm<<std::endl;
+        if (transform_norm < ESTIMATION_THRESHOLD_) break;
 
     }
-    return T_icp * initial_guess;
+
+    std::cout<<"RegisterFrameLocal3DoF Iter: "<<i_iter_num<<std::endl;
+
+    // (전역 ICP 누적 변화량)
+    return last_icp_pose;
 }
 
 Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
@@ -497,23 +746,12 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
     doppler_trans_lambda_ = std::min(std::max(doppler_trans_lambda_, 0.0), 1.0);
 
     if(icp_3dof_ == true){
-        // ICP 3DOF
-        if(icp_doppler_ == true){
-            return RegisterFrameDoppler3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
-        }
-        else{
-            return RegisterFrame3DoF(frame, voxel_map, initial_guess, max_correspondence_distance, kernel);
-        }
+        // return RegisterFrame3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
+        return RegisterFrameLocal3DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
     }
     else{
         // ICP 6DOF
-        if(icp_doppler_ == true){
-            return RegisterFrameDoppler6DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
-        }
-        else{
-            return RegisterFrame6DoF(frame, voxel_map, initial_guess, max_correspondence_distance, kernel);
-        }
-
+        return RegisterFrame6DoF(frame, voxel_map, initial_guess, last_pose, dt, max_correspondence_distance, kernel);
     }
 }
 }

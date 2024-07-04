@@ -19,6 +19,7 @@
 #include <tuple>
 #include <vector>
 #include <unordered_map>
+#include <algorithm>
 
 // PCL
 #include <pcl/common/eigen.h>
@@ -65,8 +66,14 @@ struct VoxelHashMap{
           max_points_per_voxel_(max_points_per_voxel),
           local_map_time_th_(local_map_time_th) {}
 
+
     RadarPointVectorTuple GetCorrespondences(const RadarPointVector &points,
                                              double max_correspondance_distance) const;
+
+    RadarPointVectorTuple GetCorrespondencesCov(const RadarPointVector &points,
+                                             double max_correspondance_distance,
+                                             int max_cov_point) const;
+
     inline void Clear() { map_.clear(); }
     inline bool Empty() const { return map_.empty(); }
     void Update(const RadarPointVector &points, const Eigen::Vector3d &origin); // 여기서 Eigen::Vector3d 는 point 위치
@@ -75,6 +82,7 @@ struct VoxelHashMap{
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
     void RemovePointsFarfromTime(const double cur_timestamp);
     std::vector<RadarPoint> Pointcloud() const;
+
 
     double voxel_size_;
     double max_distance_;

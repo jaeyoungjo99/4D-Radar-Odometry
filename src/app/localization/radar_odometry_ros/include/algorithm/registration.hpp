@@ -41,6 +41,8 @@ namespace radar_odometry {
 
 typedef enum {
 	P2P,
+    P2PCOV,
+    PCOV2PCOV,
     GICP,
     APDGICP
 } IcpType;
@@ -48,43 +50,50 @@ typedef enum {
 struct Registration{
     explicit Registration(IcpType icp_type, bool icp_3dof, double lm_lambda, 
             bool icp_doppler, double doppler_gm_th, double doppler_trans_lambda,
-            double range_variance_m, double azimuth_variance_deg, double elevation_variance_deg)
+            double range_variance_m, double azimuth_variance_deg, double elevation_variance_deg, double gicp_max_point)
             :icp_type_(icp_type),  icp_3dof_(icp_3dof), lm_lambda_(lm_lambda),
             icp_doppler_(icp_doppler), doppler_gm_th_(doppler_gm_th), doppler_trans_lambda_(doppler_trans_lambda),
             range_variance_m_(range_variance_m), azimuth_variance_deg_(azimuth_variance_deg), 
-            elevation_variance_deg_(elevation_variance_deg){}
+            elevation_variance_deg_(elevation_variance_deg), gicp_max_point_(gicp_max_point) {}
 
 
     // Alignment Functions
-    Eigen::Matrix4d AlignClouds(const std::vector<RadarPoint> &source,
+    Eigen::Matrix4d AlignClouds6DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             double th);
 
-    Eigen::Matrix4d AlignCloudsDoppler(const std::vector<RadarPoint> &source,
+    Eigen::Matrix4d AlignCloudsDoppler6DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             const Velocity &sensor_velocity,
-                            double th,
-                            double doppler_gm_th,
-                            double doppler_trans_lambda);
+                            double th);
 
     Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             double th);
 
     Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
-                            double th,
-                            double doppler_gm_th,
-                            double doppler_trans_lambda);
+                            double th);
+
+    // Debug Local
+    Eigen::Matrix4d AlignCloudsLocal3DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
+                            double th);
+
+    Eigen::Matrix4d AlignCloudsLocalDoppler3DoF(const std::vector<RadarPoint> &source,
+                            const std::vector<RadarPoint> &target,
+                            Eigen::Matrix4d &iter_pose,
+                            const Velocity &sensor_velocity,
+                            double th);
+
+
     // Registration Functions
     Eigen::Matrix4d RegisterFrame6DoF(const std::vector<RadarPoint> &frame,
-                            const VoxelHashMap &voxel_map,
-                            const Eigen::Matrix4d &initial_guess,
-                            double max_correspondence_distance,
-                            double kernel);
-
-    Eigen::Matrix4d RegisterFrameDoppler6DoF(const std::vector<RadarPoint> &frame,
                             const VoxelHashMap &voxel_map,
                             const Eigen::Matrix4d &initial_guess,
                             const Eigen::Matrix4d &last_pose,
@@ -95,16 +104,20 @@ struct Registration{
     Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
                             const VoxelHashMap &voxel_map,
                             const Eigen::Matrix4d &initial_guess,
+                            const Eigen::Matrix4d &last_pose,
+                            const double dt,
                             double max_correspondence_distance,
                             double kernel);
 
-    Eigen::Matrix4d RegisterFrameDoppler3DoF(const std::vector<RadarPoint> &frame,
+    // Local Frame Registration Debug
+    Eigen::Matrix4d RegisterFrameLocal3DoF(const std::vector<RadarPoint> &frame,
                             const VoxelHashMap &voxel_map,
                             const Eigen::Matrix4d &initial_guess,
                             const Eigen::Matrix4d &last_pose,
                             const double dt,
                             double max_correspondence_distance,
-                            double kernel);  
+                            double kernel);
+
 
     // Master
     Eigen::Matrix4d RunRegister(const std::vector<RadarPoint> &frame,
@@ -126,6 +139,7 @@ struct Registration{
     double range_variance_m_;
     double azimuth_variance_deg_;
     double elevation_variance_deg_;
+    int gicp_max_point_;
 };
 }
 

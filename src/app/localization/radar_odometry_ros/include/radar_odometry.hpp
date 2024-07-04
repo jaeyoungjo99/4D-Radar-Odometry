@@ -80,6 +80,8 @@ struct RadarOdometryConfig{
     double range_variance_m = 0.1;
     double azimuth_variance_deg = 2.0;
     double elevation_variance_deg = 5.0;
+
+    int gicp_max_point = 20;
 };
 
 class RadarOdometry{
@@ -93,7 +95,7 @@ public:
         adaptive_threshold_(config.initial_threshold, config.min_motion_th, config.max_range),
         registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
                     config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
-                    config.azimuth_variance_deg, config.elevation_variance_deg)
+                    config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}

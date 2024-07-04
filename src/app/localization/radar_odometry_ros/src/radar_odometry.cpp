@@ -169,7 +169,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         
         // if(sigma > 1.0) sigma = 1.0;
 
-        new_pose = registration_.RunRegister(ransac_radar_points, local_map_, initial_guess, last_pose,
+        new_pose = registration_.RunRegister(cropped_frame, local_map_, initial_guess, last_pose,
                                 d_delta_radar_time_sec,
                                 3.0 * sigma, sigma / 3.0);
 
