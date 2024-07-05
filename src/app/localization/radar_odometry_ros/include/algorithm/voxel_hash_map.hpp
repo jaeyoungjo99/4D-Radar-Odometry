@@ -82,6 +82,7 @@ struct VoxelHashMap{
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
     void RemovePointsFarfromTime(const double cur_timestamp);
     std::vector<RadarPoint> Pointcloud() const;
+    std::vector<RadarPoint> StaticPointcloud() const;
 
 
     double voxel_size_;

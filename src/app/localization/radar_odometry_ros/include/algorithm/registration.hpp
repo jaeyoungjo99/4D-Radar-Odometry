@@ -59,28 +59,6 @@ struct Registration{
             ego_to_radar_x_m_(ego_to_radar_x_m) {}
 
 
-    // Alignment Functions
-    Eigen::Matrix4d AlignClouds6DoF(const std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
-                            Eigen::Matrix4d &iter_pose,
-                            double th);
-
-    Eigen::Matrix4d AlignCloudsDoppler6DoF(const std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
-                            const Velocity &sensor_velocity,
-                            double th);
-
-    Eigen::Matrix4d AlignClouds3DoF(const std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
-                            Eigen::Matrix4d &iter_pose,
-                            double th);
-
-    Eigen::Matrix4d AlignCloudsDoppler3DoF(const std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
-                            Eigen::Matrix4d &iter_pose,
-                            const Velocity &sensor_velocity,
-                            double th);
-
     // Debug Local
     Eigen::Matrix4d AlignCloudsLocal3DoF(const std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
@@ -105,42 +83,6 @@ struct Registration{
                             const Velocity &sensor_velocity,
                             double trans_th,
                             double vel_th);
-
-
-    // Registration Functions
-    Eigen::Matrix4d RegisterFrame6DoF(const std::vector<RadarPoint> &frame,
-                            const VoxelHashMap &voxel_map,
-                            const Eigen::Matrix4d &initial_guess,
-                            const Eigen::Matrix4d &last_pose,
-                            const double dt,
-                            double max_correspondence_distance,
-                            double kernel);
-
-    Eigen::Matrix4d RegisterFrame3DoF(const std::vector<RadarPoint> &frame,
-                            const VoxelHashMap &voxel_map,
-                            const Eigen::Matrix4d &initial_guess,
-                            const Eigen::Matrix4d &last_pose,
-                            const double dt,
-                            double max_correspondence_distance,
-                            double kernel);
-
-    // Local Frame Registration Debug
-    Eigen::Matrix4d RegisterFrameLocal3DoF(const std::vector<RadarPoint> &frame,
-                            const VoxelHashMap &voxel_map,
-                            const Eigen::Matrix4d &initial_guess,
-                            const Eigen::Matrix4d &last_pose,
-                            const double dt,
-                            double trans_sigma,
-                            double vel_sigma);
-
-    Eigen::Matrix4d RegisterFrameLocal6DoF(const std::vector<RadarPoint> &frame,
-                            const VoxelHashMap &voxel_map,
-                            const Eigen::Matrix4d &initial_guess,
-                            const Eigen::Matrix4d &last_pose,
-                            const double dt,
-                            double trans_sigma,
-                            double vel_sigma);
-
 
 
     // Master

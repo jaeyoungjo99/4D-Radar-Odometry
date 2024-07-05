@@ -163,6 +163,21 @@ std::vector<RadarPoint> VoxelHashMap::Pointcloud() const {
     return points;
 }
 
+std::vector<RadarPoint> VoxelHashMap::StaticPointcloud() const {
+    std::vector<RadarPoint> points;
+    points.reserve(max_points_per_voxel_ * map_.size()); // 복셀내 최대 포인트 수 * 전체 복셀수  할당
+    for (const auto &[voxel, voxel_block] : map_) { // 각 복셀 순회
+        (void)voxel;
+        for (const auto &point : voxel_block.points) { // 복셀 내 포인트 순회
+            if(point.range < 30){
+                points.push_back(point);
+            }
+        }
+    }
+    return points;
+}
+
+
 // Point 단위 Update
 void VoxelHashMap::Update(const RadarPointVector &points, const Eigen::Vector3d &origin) {
     AddPoints(points);

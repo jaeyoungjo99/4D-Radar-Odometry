@@ -113,7 +113,10 @@ public:
     bool HasMoved();
 
 public:
-    std::vector<RadarPoint> LocalMap() const { return local_map_.Pointcloud(); };
+    std::vector<RadarPoint> LocalMap() const {
+        //  return local_map_.Pointcloud(); 
+        return local_map_.StaticPointcloud(); 
+         };
     std::vector<Eigen::Matrix4d> poses() const {return poses_;};
 
 private:

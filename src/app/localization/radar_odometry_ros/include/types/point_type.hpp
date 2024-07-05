@@ -78,13 +78,15 @@ struct RadarPoint {
     int frame_idx;
     double timestamp;
 
+    bool is_static;
+
     // 생성자
     RadarPoint()
         : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()),
           local(Eigen::Vector3d::Zero()),
           sensor_pose(Eigen::Matrix4d::Identity()), power(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
-          frame_idx(0), timestamp(0.0) {}
+          frame_idx(0), timestamp(0.0), is_static(false){}
 
     ~RadarPoint(){
     };
@@ -102,6 +104,7 @@ struct RadarPoint {
         ele_angle = 0.0;
         frame_idx = 0;
         timestamp = 0.0;
+        is_static = false;
     }
 };
 
@@ -189,6 +192,7 @@ inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double
     RadarPoint cov_point = point;
     double dist = cov_point.range;
     double s_x = std::max(dist * range_var_m, 0.1);
+    // double s_x = range_var_m;
     double s_y = dist * sin(azim_var_deg / 180 * M_PI); // 0.00873
     double s_z = dist * sin(ele_var_deg / 180 * M_PI); // 0.01745
     double elevation = cov_point.ele_angle / 180 * M_PI;
@@ -214,6 +218,7 @@ inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, doub
     RadarPoint cov_point = point;
     double dist = sqrt(cov_point.pose.x()*cov_point.pose.x() + cov_point.pose.y()*cov_point.pose.y());
     double s_x = std::max(dist * range_var_m, 0.1);
+    // double s_x = range_var_m;
     double s_y = dist * sin(azim_var_deg / 180 * M_PI);
     double azimuth = cov_point.azi_angle / 180 * M_PI;
     Eigen::Matrix2d R;

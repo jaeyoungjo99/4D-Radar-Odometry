@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Local Map1
         - /Local Map1/Autocompute Value Bounds1
         - /Odometry1/Shape1
       Splitter Ratio: 0.5101214647293091
@@ -65,7 +66,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 0; 0; 0
@@ -80,7 +81,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Class: rviz/TF
       Enabled: true
       Filter (blacklist): ""
@@ -142,14 +143,14 @@ Visualization Manager:
     - Alpha: 0.800000011920929
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
-        Max Value: 10
+        Max Value: 20
         Min Value: -1
         Value: false
       Axis: Z
       Channel Name: vel
       Class: rviz/PointCloud2
       Color: 255; 205; 103
-      Color Transformer: FlatColor
+      Color Transformer: AxisColor
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -302,7 +303,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 37.439395904541016
+      Distance: 43.32083511352539
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -310,17 +311,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 6.625988960266113
-        Y: -1.0333729982376099
-        Z: -8.54474819789175e-06
-      Focal Shape Fixed Size: false
+        X: -9.64029312133789
+        Y: 1.352942705154419
+        Z: 0
+      Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.20539847016334534
+      Pitch: 0.10979694873094559
       Target Frame: afi910
-      Yaw: 3.1153953075408936
+      Yaw: 3.1904046535491943
     Saved: ~
 Window Geometry:
   Displays:
@@ -340,5 +341,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1797
-  X: 3
-  Y: -42
+  X: 17
+  Y: -21

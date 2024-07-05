@@ -290,6 +290,7 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
     auto local_map_header = i_point_cloud2_.header;
     local_map_header.frame_id = "world";
     o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.LocalMap(), local_map_header);
+    
 
 }
 
