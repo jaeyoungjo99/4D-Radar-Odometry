@@ -70,13 +70,17 @@ struct VoxelHashMap{
     RadarPointVectorTuple GetCorrespondences(const RadarPointVector &points,
                                              double max_correspondance_distance) const;
 
+    std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>> 
+                            GetCorrespondencesWithIdx(const RadarPointVector &points,
+                                             double max_correspondance_distance) const;
+
     RadarPointVectorTuple GetCorrespondencesCov(const RadarPointVector &points,
                                              double max_correspondance_distance,
                                              int max_cov_point) const;
 
     inline void Clear() { map_.clear(); }
     inline bool Empty() const { return map_.empty(); }
-    void Update(const RadarPointVector &points, const Eigen::Vector3d &origin); // 여기서 Eigen::Vector3d 는 point 위치
+    void Update(const RadarPointVector &points, const Eigen::Vector3d &origin);
     void Update(const RadarPointVector &points, const Eigen::Matrix4d &pose);
     void AddPoints(const RadarPointVector &points);
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);

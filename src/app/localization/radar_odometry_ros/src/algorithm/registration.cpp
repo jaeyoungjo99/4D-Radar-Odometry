@@ -76,7 +76,7 @@ Eigen::Matrix3d vectorToSkewSymmetricMatrix(const Eigen::Vector3d& vec) {
 namespace radar_odometry {
 
 
-Eigen::Matrix4d Registration::AlignCloudsLocal3DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsLocal3DoF(std::vector<RadarPoint> &source,
                                 const std::vector<RadarPoint> &target,
                                 Eigen::Matrix4d &iter_pose,
                                 double th) {
@@ -169,7 +169,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocal3DoF(const std::vector<RadarPoint>
     return transformation;
 }
 
-Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
@@ -271,6 +271,11 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
 
         double weight_v = square(vel_th) / square(vel_th + square(vel_residual));
 
+        // static 속성 부여
+        if(fabs(vel_residual) < vel_th * 3.0){
+            source[i].is_static = true;
+        }
+
         Eigen::Matrix3d J_tot;
         Eigen::Matrix1_3d R_tot;
 
@@ -303,7 +308,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(const std::vector<Rada
     return transformation;
 }
 
-Eigen::Matrix4d Registration::AlignCloudsLocal6DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsLocal6DoF(std::vector<RadarPoint> &source,
                                 const std::vector<RadarPoint> &target,
                                 Eigen::Matrix4d &iter_pose,
                                 double th) {
@@ -378,7 +383,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocal6DoF(const std::vector<RadarPoint>
     return transformation;
 }
 
-Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(const std::vector<RadarPoint> &source,
+Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint> &source,
                             const std::vector<RadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
@@ -501,6 +506,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(const std::vector<Rada
 
 
 Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
+                        std::vector<RadarPoint> &frame_global,
                         const VoxelHashMap &voxel_map,
                         const Eigen::Matrix4d &initial_guess,
                         const Eigen::Matrix4d &last_pose,
@@ -511,16 +517,28 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
 
     doppler_gm_th_ = std::max(doppler_gm_th_, DBL_MIN);
     doppler_trans_lambda_ = std::min(std::max(doppler_trans_lambda_, 0.0), 1.0);
+    std::vector<int> source_indices;
+    std::vector<RadarPoint> source_c_global, target_c_global;
 
-
-    if (voxel_map.Empty()) return initial_guess;
+    std::vector<RadarPoint> source_local = frame;  
 
     // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
-    std::vector<RadarPoint> source_local = frame;    
+    if(icp_3dof_ == true){
+        CalFramePointCov2d(source_local, range_variance_m_, azimuth_variance_deg_);
+    }
+    else{
+        CalFramePointCov(source_local, range_variance_m_, azimuth_variance_deg_, elevation_variance_deg_);
+    }
+
     std::vector<RadarPoint> source_global = source_local;
     TransformPoints(initial_guess, source_local, source_global);
+    frame_global = source_global;
 
-    // 2. 
+    if (voxel_map.Empty()){
+        return initial_guess;
+    } 
+
+    // 2. ICP 수행
     Eigen::Matrix4d last_icp_pose = initial_guess;
     
     int i_iter_num = 0;
@@ -528,14 +546,15 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
         i_iter_num++;
 
         // Get Correspodence in global frame
-        std::vector<RadarPoint> source_c_global, target_c_global;
+        
         if (icp_type_ == IcpType::P2P || icp_type_ == IcpType::P2PCOV || icp_type_ == IcpType::PCOV2PCOV) {
-            std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, trans_sigma * 3);
+            // std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondences(source_global, trans_sigma * 3);
+            std::tie(source_indices, source_c_global, target_c_global) = voxel_map.GetCorrespondencesWithIdx(source_global, trans_sigma * 3);
         } else {
             std::tie(source_c_global, target_c_global) = voxel_map.GetCorrespondencesCov(source_global, trans_sigma * 3, gicp_max_point_);
         }
 
-        Eigen::Matrix4d estimation_local; // 센서 좌표계 상에서의 ICP 미소 변화량
+        Eigen::Matrix4d estimation_local = Eigen::Matrix4d::Identity(); // 센서 좌표계 상에서의 ICP 미소 변화량
 
         if(icp_3dof_ == true){
             if(icp_doppler_ == true){
@@ -564,16 +583,24 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
         // 전역 좌표계 변화량으로 source global 미소이동
         TransformPoints(last_icp_pose, source_local, source_global);
 
-        
         // ICP 종료 조건 확인
-        double yaw = std::atan2(estimation_local(1, 0), estimation_local(0, 0));
-        double transform_norm = std::abs(yaw) + estimation_local.block<2, 1>(0, 3).norm();
-        std::cout<<"Norm "<<transform_norm<<"\t r_norm: "<<yaw*180/M_PI<<"\t s_norm: "<<estimation_local.block<2, 1>(0, 3).norm()<<std::endl;
+        double rot_norm = estimation_local.block<3, 3>(0, 0).eulerAngles(0, 1, 2).norm();
+        double transform_norm = rot_norm + estimation_local.block<3, 1>(0, 3).norm();
+        std::cout<<"Norm "<<transform_norm<<"\t r_norm: "<<rot_norm<<"\t s_norm: "<<estimation_local.block<3, 1>(0, 3).norm()<<std::endl;
         if (transform_norm < ESTIMATION_THRESHOLD_) break;
 
     }
 
-    std::cout<<"RegisterFrameLocal3DoF Iter: "<<i_iter_num<<std::endl;
+    // Association 된 point 에 static 부여
+    for(int t_idx = 0; t_idx < source_indices.size(); t_idx++){
+        
+        if(source_c_global[t_idx].is_static == true){
+            frame_global[source_indices[t_idx]].is_static = true;
+        }
+
+    }
+
+    std::cout<<"RegisterFrameLocal Iter: "<<i_iter_num<<std::endl;
 
     // (전역 ICP 누적 변화량)
     return last_icp_pose;

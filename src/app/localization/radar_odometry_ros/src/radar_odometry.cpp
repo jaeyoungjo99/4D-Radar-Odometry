@@ -122,6 +122,8 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
                 config_.odometry_type == OdometryType::EGOMOTIONICP ){
             std::chrono::system_clock::time_point registration_start_time_sec = std::chrono::system_clock::now();
 
+            RadarPointVector frame_global;
+
             double trans_sigma = GetTransAdaptiveThreshold(); // Keep estimated model error
             double vel_sigma = GetVelAdaptiveThreshold(); // Keep estimated model error
 
@@ -132,7 +134,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
 
             // if(trans_sigma > 1.0) trans_sigma = 1.0;
 
-            new_pose = registration_.RunRegister(ransac_radar_points, local_map_, last_pose * lsq_prediction, last_pose,
+            new_pose = registration_.RunRegister(ransac_radar_points, frame_global, local_map_, last_pose * lsq_prediction, last_pose,
                                             d_delta_radar_time_sec,
                                             trans_sigma, vel_sigma);
 
@@ -161,7 +163,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
     }
     else if(config_.odometry_type == OdometryType::ICP){
         // // 4. Registration
-        RadarPointVector cov_points = cropped_frame;
+        RadarPointVector frame_global;
 
         std::chrono::system_clock::time_point registration_start_time_sec = std::chrono::system_clock::now();
 
@@ -173,14 +175,7 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         
         // if(trans_sigma > 1.0) trans_sigma = 1.0;
 
-        if(config_.icp_3dof == true){
-            CalFramePointCov2d(cov_points, config_.range_variance_m, config_.azimuth_variance_deg);
-        }
-        else{
-            CalFramePointCov(cov_points, config_.range_variance_m, config_.azimuth_variance_deg, config_.elevation_variance_deg);
-        }
-
-        new_pose = registration_.RunRegister(cov_points, local_map_, initial_guess, last_pose,
+        new_pose = registration_.RunRegister(cropped_frame, frame_global, local_map_, initial_guess, last_pose,
                                 d_delta_radar_time_sec,
                                 trans_sigma, vel_sigma);
 
@@ -197,10 +192,9 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         // End
         Eigen::Matrix4d model_deviation = initial_guess.inverse() * new_pose;
         adaptive_threshold_.UpdateModelDeviation(model_deviation);
-
-        // Vel fitting 실패시, 동적 포인트가 맵에 누적되는것 방지
-        if(b_is_fitting_failed == false)
-            local_map_.Update(cov_points, new_pose);
+        
+        Eigen::Vector3d origin = new_pose.block<3, 1>(0, 3);
+        local_map_.Update(frame_global, origin);
 
         poses_.push_back(new_pose);
         times_.push_back(i_radar_timestamp_sec);
