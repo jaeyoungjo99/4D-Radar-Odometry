@@ -54,6 +54,12 @@
 #include <atom_task.h>
 #include <ini_parser.h>
 
+#include <fstream>
+#include <filesystem>
+
+// json
+#include <nlohmann/json.hpp>
+
 
 // Message header
 #include <sensor_msgs/PointCloud2.h>
@@ -65,10 +71,19 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <rosgraph_msgs/Clock.h>
 #include <geometry_msgs/Point.h>
-#include <geometry_msgs/TwistStamped.h>
+#include "geometry_msgs/PoseArray.h"
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/TwistStamped.h"
 #include <nav_msgs/Odometry.h>
 
+
 #include <tf/tf.h>
+#include <tf/transform_datatypes.h>
+#include <tf/transform_listener.h>
+#include <tf/LinearMath/Quaternion.h> // tf::quaternion
+#include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
+#include <std_msgs/Float32MultiArray.h>
 #include "types/point_type.hpp"
 
 #include "radar_odometry.hpp"
@@ -81,7 +96,7 @@ using namespace std;
 
 typedef struct {
     double timestamp; 
-    std::vector<RadarPoint> points;
+    std::vector<SRadarPoint> points;
     std::string frame_id;
 } RadarDataStruct;
 
@@ -106,12 +121,40 @@ class RadarOdometryNode : public AtomTask {
         void Terminate();
         void ProcessINI();
 
+        void ProcessRadarFiles();
+
+    private:
+        void ProcessRadarFile(std::string& vod_seq_folder_path, bool b_debug_mode, std::string& vod_eval_folder_path);
+        void savePosesToFile(const std::vector<Eigen::Affine3d>& poses, const std::string& filename);
+        void GetPoseJsonFiles(std::string& pose_directory_path, std::vector<std::filesystem::path>& pose_files);
+        void GetRadarFiles(std::string& radar_directory_path, std::vector<std::filesystem::path>& radar_files);
+        void ParsePoseJsonFiles(const std::vector<std::filesystem::path>& pose_files, const Eigen::Affine3d& cam2radar_tfrom, std::vector<Eigen::Affine3d>& odom2radar_transforms);
+        void ConvertBin2PointCloud(std::ifstream& bin_file, std::vector<SRadarPoint>& o_s_radar_points, int time_idx);
+        Eigen::Affine3d jsonToAffine3d(const nlohmann::json& json);
+        // Pub GT
+        void pubVodGtPose(const Eigen::Affine3d& vod_gt_pose);
+        void BroadcastTFAndVisualizeOdomPose(const Eigen::Affine3d& result_tf_in_ego_pose);
+        void VisualizeAndPubOdomPose(double odom_x, double odom_y, double odom_z, tf::Quaternion odom_rpy);
+
+
+        // VOD
+        // Calibration params
+        Eigen::Matrix4d vod_cam2radar_mat_;
+        sensor_msgs::PointCloud2 i_point_cloud_;
+        Eigen::Affine3d result_tf_;
+
+        geometry_msgs::PoseStamped novatel_pose_stamped_;
+        geometry_msgs::PoseStamped radar_odom_pose_stamped_;
+
+        int i_save_odom_txt_type_; // 1: KITTI, 2: TUM
+        std::string str_base_link_;
+
     private:
         inline void CallbackPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
 
-            i_point_cloud2_ = *msg;
-            const auto points =  PointCloud2ToRadarPoints(msg);
+            i_point_cloud2_msg_ = *msg;
+            const auto points =  AfiPointCloud2ToRadarPoints(msg);
 
             i_radar_struct_.timestamp = msg->header.stamp.toSec();
             i_radar_struct_.points = points;
@@ -120,53 +163,6 @@ class RadarOdometryNode : public AtomTask {
             b_is_new_point_cloud_ = true;
 
         }
-
-        // inline void CallbackPointCloud(const sensor_msgs::PointCloud::ConstPtr& msg){
-        //     std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
-        //     if (cfg_str_sensor_type_ == "ntu") {
-        //         // sensor_msgs::PointCloud를 PCL 포인트 클라우드로 변환
-        //         i_main_radar_ptr_->points.clear();
-
-        //         float f_p_dist;
-        //         for (size_t i = 0; i < msg->points.size(); ++i) {
-        //             PointXYZPRVAE pcl_point;
-        //             pcl_point.x = msg->points[i].x;
-        //             pcl_point.y = msg->points[i].y;
-        //             pcl_point.z = msg->points[i].z;
-                    
-        //             // 포인트의 Alpha, Beta, Doppler, Power, Range 정보를 채우기 위해 채널 데이터 검색
-        //             for (size_t j = 0; j < msg->channels.size(); ++j) {
-        //                 const auto& channel = msg->channels[j];
-        //                 if (channel.name == "Alpha") {
-        //                     pcl_point.azi_angle = channel.values[i] * (-1.0);
-        //                 } else if (channel.name == "Beta") {
-        //                     pcl_point.ele_angle = channel.values[i] * (-1.0);
-        //                 } else if (channel.name == "Doppler") {
-        //                     pcl_point.vel = channel.values[i];
-        //                 } else if (channel.name == "Power") {
-        //                     pcl_point.power = channel.values[i];
-        //                 } else if (channel.name == "Range") {
-        //                     pcl_point.range = channel.values[i];
-        //                 }
-        //             }
-        //             f_p_dist = sqrt(pcl_point.x * pcl_point.x + pcl_point.y * pcl_point.y + pcl_point.z * pcl_point.z);
-        //             if (f_p_dist < cfg_d_max_distance_m_) {
-        //                 i_main_radar_ptr_->points.push_back(pcl_point);
-        //             }
-
-        //         }
-
-        //         int i_point_num = temp_radar_ptr_->points.size();
-
-        //         i_radar_struct_.timestamp = msg->header.stamp.toSec();
-        //         i_radar_struct_.points = i_main_radar_ptr_;
-        //         i_radar_struct_.frame_id = msg->header.frame_id;
-
-        //         b_is_new_point_cloud_ = true;
-        //     }
-
-            
-        // }
 
         inline void CallbackCAN(const geometry_msgs::TwistStampedConstPtr& msg){
             std::lock_guard<std::mutex> lock(mutex_can_);
@@ -187,6 +183,8 @@ class RadarOdometryNode : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
+        
+
     private:
         mutex mutex_main_point_cloud_;
         mutex mutex_can_;
@@ -203,9 +201,21 @@ class RadarOdometryNode : public AtomTask {
         ros::Publisher p_radar_vel_heading_marker_array_;
         ros::Publisher p_odom_;
 
+        // VOD
+        ros::Publisher rospub_odom_accumulated_map_;
+        ros::Publisher rospub_radar_ego_motion_odom_;
+        ros::Publisher rospub_nov_pose_;
+        ros::Publisher rospub_radar_odom_pose_;
+        ros::Publisher rospub_radar_odom_pose_stamped_;
+        ros::Publisher rospub_vod_radar_points_;
+        ros::Publisher rospub_gt_odom_pose_;
+        ros::Publisher rospub_correspondences_;
+        ros::Publisher rospub_novatel_ref_pose_stamped_;
+        ros::Publisher rospub_radar_odom_eval_pose_stamped_;
+
         // input
-        sensor_msgs::PointCloud2 i_point_cloud2_;
-        sensor_msgs::PointCloud i_point_cloud_;
+        sensor_msgs::PointCloud2 i_point_cloud2_msg_;
+        sensor_msgs::PointCloud i_point_cloud1_msg_;
 
         // output
         sensor_msgs::PointCloud2 o_vel_comp_radar_cloud_;
@@ -230,7 +240,6 @@ class RadarOdometryNode : public AtomTask {
         // Variables
         bool b_is_new_point_cloud_ = false;
         bool b_is_new_can_ = false;
-        bool b_is_new_publish_ = false;
 
         double d_last_radar_time_sec_;
         Eigen::Matrix4d radar_pose_;

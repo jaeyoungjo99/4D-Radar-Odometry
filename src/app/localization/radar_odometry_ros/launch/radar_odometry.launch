@@ -1,5 +1,19 @@
-<!-- -->
 <launch>
   <rosparam file="config/system.yaml" command="load"/>   
-  <node pkg="radar_odometry_ros" type="radar_odometry_ros" name="radar_odometry_ros" output="screen" respawn="true"/>
+  <node pkg="radar_odometry_ros" type="radar_odometry_ros" name="radar_odometry_ros" output="screen" respawn="false">
+    <param name="b_flag_run_vod_dataset"            value="true"/>
+    <param name="b_debug_mode"            value="false"/>
+    <param name="i_save_odom_txt_type_"   value="1"/> <!-- 1: KITTI, 2: TUM -->
+    <param name="str_base_link_"          value="KUSV"/> <!-- 1: KITTI, 2: TUM -->
+    <param name="vod_seq_folder_path"     value="/mnt/c/Users/Alien02/Documents/rosbag/View-of-Delft/testset/03"/>
+    <param name="b_flag_run_vod_dataset"  value="true"/>
+    <param name="b_eval_whold_seq"        value="false"/> 
+    <param name="vod_eval_folder_path"    value="/mnt/c/Users/Alien02/Documents/rosbag/View-of-Delft/4d_radar_odometry_results/"/>
+    
+  </node>
+
+    <arg name="rviz" default="true" />
+    <group if="$(arg rviz)">
+        <node pkg="rviz" type="rviz" name="rviz" args="-d $(find radar_odometry_ros)/rviz/radar_odom.rviz" />
+    </group>
 </launch>

@@ -60,25 +60,25 @@ struct Registration{
 
 
     // Debug Local
-    Eigen::Matrix4d AlignCloudsLocal3DoF(std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
+    Eigen::Matrix4d AlignCloudsLocal3DoF(std::vector<SRadarPoint> &source,
+                            const std::vector<SRadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             double th);
 
-    Eigen::Matrix4d AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
+    Eigen::Matrix4d AlignCloudsLocalDoppler3DoF(std::vector<SRadarPoint> &source,
+                            const std::vector<SRadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
                             double trans_th,
                             double vel_th);
 
-    Eigen::Matrix4d AlignCloudsLocal6DoF(std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
+    Eigen::Matrix4d AlignCloudsLocal6DoF(std::vector<SRadarPoint> &source,
+                            const std::vector<SRadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             double th);
 
-    Eigen::Matrix4d AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint> &source,
-                            const std::vector<RadarPoint> &target,
+    Eigen::Matrix4d AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoint> &source,
+                            const std::vector<SRadarPoint> &target,
                             Eigen::Matrix4d &iter_pose,
                             const Velocity &sensor_velocity,
                             double trans_th,
@@ -86,8 +86,8 @@ struct Registration{
 
 
     // Master
-    Eigen::Matrix4d RunRegister(const std::vector<RadarPoint> &frame,
-                            std::vector<RadarPoint> &frame_global,
+    Eigen::Matrix4d RunRegister(const std::vector<SRadarPoint> &frame,
+                            std::vector<SRadarPoint> &frame_global,
                             const VoxelHashMap &voxel_map,
                             const Eigen::Matrix4d &initial_guess,
                             const Eigen::Matrix4d &last_pose,

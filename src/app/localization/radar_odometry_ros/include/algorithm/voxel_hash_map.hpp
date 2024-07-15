@@ -41,15 +41,15 @@
 namespace radar_odometry {
 struct VoxelHashMap{
 
-    using RadarPointVector = std::vector<RadarPoint>;
+    using RadarPointVector = std::vector<SRadarPoint>;
     using RadarPointVectorTuple = std::tuple<RadarPointVector, RadarPointVector>;
     using Voxel = Eigen::Vector3i;
 
     struct VoxelBlock {
         // buffer of points with a max limit of n_points
-        std::vector<RadarPoint> points;
+        std::vector<SRadarPoint> points;
         int num_points_;
-        inline void AddPoint(const RadarPoint &point) {
+        inline void AddPoint(const SRadarPoint &point) {
             if (points.size() < static_cast<size_t>(num_points_)) points.push_back(point);
         }
     };
@@ -70,7 +70,7 @@ struct VoxelHashMap{
     RadarPointVectorTuple GetCorrespondences(const RadarPointVector &points,
                                              double max_correspondance_distance) const;
 
-    std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>> 
+    std::tuple<std::vector<int>, std::vector<SRadarPoint>, std::vector<SRadarPoint>> 
                             GetCorrespondencesWithIdx(const RadarPointVector &points,
                                              double max_correspondance_distance) const;
 
@@ -86,8 +86,8 @@ struct VoxelHashMap{
     void AddPoints(const RadarPointVector &points);
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
     void RemovePointsFarfromTime(const double cur_timestamp);
-    std::vector<RadarPoint> Pointcloud() const;
-    std::vector<RadarPoint> StaticPointcloud() const;
+    std::vector<SRadarPoint> Pointcloud() const;
+    std::vector<SRadarPoint> StaticPointcloud() const;
 
 
     double voxel_size_;

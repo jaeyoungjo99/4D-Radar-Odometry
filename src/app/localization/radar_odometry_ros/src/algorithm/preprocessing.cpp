@@ -25,10 +25,10 @@ std::vector<Eigen::Vector3d> Preprocess(const std::vector<Eigen::Vector3d> &fram
     return inliers;
 }
 
-std::vector<RadarPoint> Preprocess(const std::vector<RadarPoint> &frame,
+std::vector<SRadarPoint> Preprocess(const std::vector<SRadarPoint> &frame,
                                         double max_range,
                                         double min_range) {
-    std::vector<RadarPoint> inliers;
+    std::vector<SRadarPoint> inliers;
     std::copy_if(frame.cbegin(), frame.cend(), std::back_inserter(inliers), [&](const auto &pt) {
         const double norm = pt.pose.norm();
         return norm < max_range && norm > min_range;

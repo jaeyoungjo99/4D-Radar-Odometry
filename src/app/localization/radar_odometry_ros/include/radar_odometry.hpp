@@ -90,8 +90,8 @@ struct RadarOdometryConfig{
 
 class RadarOdometry{
 public:
-    using RadarPointVector = std::vector<RadarPoint>;
-    using RadarPointVectorTuple = std::tuple<std::vector<RadarPoint>, std::vector<RadarPoint>>;
+    using RadarPointVector = std::vector<SRadarPoint>;
+    using RadarPointVectorTuple = std::tuple<std::vector<SRadarPoint>, std::vector<SRadarPoint>>;
 public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
@@ -107,7 +107,7 @@ public:
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
 
 public:
-    RadarPointVectorTuple RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec);
+    RadarPointVectorTuple RegisterPoints(const std::vector<SRadarPoint> i_radar_points, const double i_radar_timestamp_sec);
     Eigen::Matrix4d GetPredictionModel() const;
     Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
     
@@ -116,8 +116,8 @@ public:
     bool HasMoved();
 
 public:
-    std::vector<RadarPoint> LocalMap() const {return local_map_.Pointcloud();};
-    std::vector<RadarPoint> StaticLocalMap() const { return local_map_.StaticPointcloud();};
+    std::vector<SRadarPoint> LocalMap() const {return local_map_.Pointcloud();};
+    std::vector<SRadarPoint> StaticLocalMap() const { return local_map_.StaticPointcloud();};
     std::vector<Eigen::Matrix4d> poses() const {return poses_;};
 
 private:
@@ -129,7 +129,7 @@ private:
     Registration registration_;
 
     double d_last_radar_time_sec_;
-    std::vector<RadarPoint> last_radar_ptr;
+    std::vector<SRadarPoint> last_radar_ptr;
 };
 
 }

@@ -13,7 +13,7 @@
 
 namespace radar_odometry::pipeline {
 
-RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec)
+RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::vector<SRadarPoint> i_radar_points, const double i_radar_timestamp_sec)
 {
     RadarPointVector ransac_radar_points;
     RadarPointVector vel_filtered_radar_points;
@@ -214,8 +214,8 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
     Eigen::Matrix3d rotation = new_pose.block<3, 3>(0, 0);
     Eigen::Vector3d translation = new_pose.block<3, 1>(0, 3);
     std::transform(ransac_radar_points.cbegin(), ransac_radar_points.cend(), points_transformed.begin(),
-                   [&](const RadarPoint &point) {
-                       RadarPoint transformed_point = point; // 속성 복사
+                   [&](const SRadarPoint &point) {
+                       SRadarPoint transformed_point = point; // 속성 복사
                        transformed_point.sensor_pose = new_pose; // 센서 위치 저장
                        transformed_point.pose = rotation * point.pose + translation; // 위치만 변경
                        return transformed_point;
