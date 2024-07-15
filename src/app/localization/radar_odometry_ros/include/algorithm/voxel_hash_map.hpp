@@ -82,6 +82,7 @@ struct VoxelHashMap{
     inline bool Empty() const { return map_.empty(); }
     void Update(const RadarPointVector &points, const Eigen::Vector3d &origin);
     void Update(const RadarPointVector &points, const Eigen::Matrix4d &pose);
+    void UpdateGlobal(const RadarPointVector &points, const Eigen::Matrix4d &pose);
     void AddPoints(const RadarPointVector &points);
     void RemovePointsFarFromLocation(const Eigen::Vector3d &origin);
     void RemovePointsFarfromTime(const double cur_timestamp);

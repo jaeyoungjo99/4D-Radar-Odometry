@@ -231,7 +231,7 @@ std::vector<RadarPoint> VoxelHashMap::StaticPointcloud() const {
     for (const auto &[voxel, voxel_block] : map_) { // 각 복셀 순회
         (void)voxel;
         for (const auto &point : voxel_block.points) { // 복셀 내 포인트 순회
-            if(point.is_static){
+            if(point.is_static && point.range < 100){
                 points.push_back(point);
             }
 
@@ -263,6 +263,22 @@ void VoxelHashMap::Update(const RadarPointVector &points, const Eigen::Matrix4d 
 
     Update(points_transformed, translation);
 }
+
+void VoxelHashMap::UpdateGlobal(const RadarPointVector &points, const Eigen::Matrix4d &pose) {
+    RadarPointVector points_transformed(points.size());
+    Eigen::Matrix3d rotation = pose.block<3, 3>(0, 0);
+    Eigen::Vector3d translation = pose.block<3, 1>(0, 3);
+    
+    std::transform(points.cbegin(), points.cend(), points_transformed.begin(),
+                   [&](const RadarPoint &point) {
+                       RadarPoint transformed_point = point; // 속성 복사
+                       transformed_point.sensor_pose = pose; // 센서 위치 저장
+                       return transformed_point;
+                   });
+
+    Update(points_transformed, translation);
+}
+
 
 
 void VoxelHashMap::AddPoints(const RadarPointVector &points) {

@@ -191,10 +191,10 @@ inline RadarPoint GetCov(const std::vector<RadarPoint> &points){
 inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double azim_var_deg, double ele_var_deg){
     RadarPoint cov_point = point;
     double dist = cov_point.range;
-    double s_x = std::max(dist * range_var_m, 0.1);
-    // double s_x = range_var_m;
-    double s_y = dist * sin(azim_var_deg / 180 * M_PI); // 0.00873
-    double s_z = dist * sin(ele_var_deg / 180 * M_PI); // 0.01745
+    // double s_x = std::max(dist * range_var_m, 0.1);
+    double s_x = range_var_m;
+    double s_y = std::max(0.1, dist * sin(azim_var_deg / 180 * M_PI)); // 0.00873
+    double s_z = std::max(0.1, dist * sin(ele_var_deg / 180 * M_PI)); // 0.01745
     double elevation = cov_point.ele_angle / 180 * M_PI;
     double azimuth = cov_point.azi_angle / 180 * M_PI;
     Eigen::AngleAxisd pitchAngle(Eigen::AngleAxisd(elevation, Eigen::Vector3d::UnitY()));
@@ -217,9 +217,9 @@ inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double
 inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, double azim_var_deg){
     RadarPoint cov_point = point;
     double dist = sqrt(cov_point.pose.x()*cov_point.pose.x() + cov_point.pose.y()*cov_point.pose.y());
-    double s_x = std::max(dist * range_var_m, 0.1);
-    // double s_x = range_var_m;
-    double s_y = dist * sin(azim_var_deg / 180 * M_PI);
+    // double s_x = std::max(dist * range_var_m, 0.1);
+    double s_x = range_var_m;
+    double s_y = std::max(0.1, dist * sin(azim_var_deg / 180 * M_PI)); // 0.00873
     double azimuth = cov_point.azi_angle / 180 * M_PI;
     Eigen::Matrix2d R;
     R << cos(azimuth), sin(azimuth),
@@ -231,11 +231,8 @@ inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, doub
 
     Eigen::Matrix2d cov = R * S;
     cov_point.cov = Eigen::Matrix4d::Zero();
-    // cov_point.cov.block<2, 2>(0, 0) = cov * cov.transpose();
     cov_point.cov.block<2, 2>(0, 0) = cov;
     cov_point.cov(2, 2) = 1.0;
-
-    // cov_point.cov = Eigen::Matrix4d::Identity(); // TODO:
 
     return cov_point;
 }

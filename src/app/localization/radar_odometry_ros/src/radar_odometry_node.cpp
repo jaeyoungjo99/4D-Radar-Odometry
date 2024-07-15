@@ -263,6 +263,13 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/gicp_max_point");
         }
 
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "output_static_map", config_.output_static_map) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/output_static_map");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "output_map_max_range", config_.output_map_max_range) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/output_map_max_range");
+        }
+
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }
 }
@@ -276,7 +283,7 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
 
     o_vel_comp_radar_ptr_->points.clear();
 
-    const auto &[frame, keypoints] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
+    const auto &[frame, frame_global] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
     radar_pose_ = odometry_.poses().back();
 
     std::chrono::duration<double>run_radar_odometry_time_sec = std::chrono::system_clock::now() - run_radar_odometry_start_time;
@@ -285,12 +292,20 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
 
     auto frame_header = i_point_cloud2_.header;
     frame_header.frame_id = "afi910";
-    o_vel_comp_radar_cloud_ = *EigenToPointCloud2(frame, frame_header);
+    
 
     auto local_map_header = i_point_cloud2_.header;
     local_map_header.frame_id = "world";
-    o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.LocalMap(), local_map_header);
-    
+
+    o_vel_comp_radar_cloud_ = *EigenToPointCloud2(frame_global, local_map_header);
+
+    // o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.StaticLocalMap(), local_map_header);
+
+    if(config_.output_static_map == true){
+        o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.StaticLocalMap(), local_map_header);
+    }else{
+        o_cur_radar_global_cloud_ = *EigenToPointCloud2(odometry_.LocalMap(), local_map_header);
+    }
 
 }
 

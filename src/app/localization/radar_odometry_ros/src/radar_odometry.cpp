@@ -175,16 +175,23 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         
         // if(trans_sigma > 1.0) trans_sigma = 1.0;
 
-        new_pose = registration_.RunRegister(cropped_frame, frame_global, local_map_, initial_guess, last_pose,
-                                d_delta_radar_time_sec,
-                                trans_sigma, vel_sigma);
+        if(cropped_frame.size() > config_.icp_min_point_num){
+            new_pose = registration_.RunRegister(cropped_frame, frame_global, local_map_, initial_guess, last_pose,
+                                    d_delta_radar_time_sec,
+                                    trans_sigma, vel_sigma);
 
-        std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
+            std::cout<<"ICP Prediction Norm: "<< (last_pose.inverse() * new_pose).block<3,1>(0,3).norm() <<std::endl;
 
-        if(CheckVelValidation( CalculateVelocity(last_pose.inverse() * new_pose, d_delta_radar_time_sec)) == false){
-            ROS_WARN_STREAM("ICP Motion Deviate!!!! USE LSQ PREDICTION");
-            new_pose = initial_guess;
+            if(CheckVelValidation( CalculateVelocity(last_pose.inverse() * new_pose, d_delta_radar_time_sec)) == false){
+                ROS_WARN_STREAM("ICP Motion Deviate!!!! USE PREDICTION");
+                new_pose = initial_guess;
+            }
+        }else{
+            ROS_WARN_STREAM("SMALL NUMBER POINTS: "<<cropped_frame.size()<< " USE PREDICTION");
+            new_pose = initial_guess;       
         }
+
+
 
         std::chrono::duration<double>registration_time_sec = std::chrono::system_clock::now() - registration_start_time_sec;
         std::cout<<"Registration Time sec: " << registration_time_sec.count() << std::endl;
@@ -193,14 +200,28 @@ RadarOdometry::RadarPointVectorTuple RadarOdometry::RegisterPoints(const std::ve
         Eigen::Matrix4d model_deviation = initial_guess.inverse() * new_pose;
         adaptive_threshold_.UpdateModelDeviation(model_deviation);
         
-        Eigen::Vector3d origin = new_pose.block<3, 1>(0, 3);
-        local_map_.Update(frame_global, origin);
+        if(frame_global.size() > 0)
+            local_map_.UpdateGlobal(frame_global, new_pose);
 
         poses_.push_back(new_pose);
         times_.push_back(i_radar_timestamp_sec);
+
+        return {cropped_frame, frame_global};
     }
 
-    return {ransac_radar_points, ransac_radar_points};
+    RadarPointVector points_transformed(ransac_radar_points.size());
+    
+    Eigen::Matrix3d rotation = new_pose.block<3, 3>(0, 0);
+    Eigen::Vector3d translation = new_pose.block<3, 1>(0, 3);
+    std::transform(ransac_radar_points.cbegin(), ransac_radar_points.cend(), points_transformed.begin(),
+                   [&](const RadarPoint &point) {
+                       RadarPoint transformed_point = point; // 속성 복사
+                       transformed_point.sensor_pose = new_pose; // 센서 위치 저장
+                       transformed_point.pose = rotation * point.pose + translation; // 위치만 변경
+                       return transformed_point;
+                   });
+
+    return {ransac_radar_points, points_transformed};
 }
 
 // Regard dt is same all time

@@ -178,7 +178,21 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint
     Eigen::Matrix3d JTJ_tot = Eigen::Matrix3d::Zero();
     Eigen::Vector3d JTr_tot = Eigen::Vector3d::Zero();
 
-    Eigen::Vector2d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y()); // TODO
+    // yaw 각도를 라디안으로 변환
+    double ego_to_radar_yaw_rad = ego_to_radar_yaw_deg_ * M_PI / 180.0;
+
+    // 회전 행렬 생성 (2D 회전)
+    Eigen::Matrix2d rotation_matrix;
+    rotation_matrix << cos(ego_to_radar_yaw_rad), -sin(ego_to_radar_yaw_rad),
+                       sin(ego_to_radar_yaw_rad),  cos(ego_to_radar_yaw_rad);
+
+
+    Eigen::Vector2d est_sensor_vel_sensor_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y()); // TODO add calib
+    // Eigen::Vector2d est_sensor_vel_vehicle_coord = rotation_matrix * est_sensor_vel_sensor_coord;
+
+    Eigen::Vector2d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y()); // TODO add calib
+
+    
     Eigen::Vector2d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0);
 
     for (size_t i = 0; i < source.size(); ++i) {
@@ -193,6 +207,12 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint
         if(fabs(target[i].pose.z() - source[i].pose.z()) > 1.0) continue;
 
         double range_weight = 1.0;
+
+        double target_static_weight = 1.0;
+        
+        if(target[i].is_static == false){
+            target_static_weight = 0.01;
+        }
 
         if(icp_type_ == IcpType::P2PCOV){
             
@@ -233,7 +253,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint
             Eigen::Matrix3d mahalanobis = RCR.inverse(); // (CiB + T*CiA*T^(-1))^(−1)
             mahalanobis(2, 2) = 0.0f;
 
-            Eigen::Vector3d error = Eigen::Vector3d::Zero();
+            Eigen::Vector3d error = Eigen::Vector3d::Zero(); // (dx, dy, 0)
             error.head<2>() = (target[i].pose.head<2>() - source[i].pose.head<2>());
 
             range_weight = (double)(error.transpose() * mahalanobis * error) / error.squaredNorm();
@@ -245,7 +265,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint
         J_r.block<2, 2>(0, 0) = Eigen::Matrix2d::Identity();
         J_r.block<2, 1>(0, 2) << -source[i].local(1), source[i].local(0); // 센서좌표계 SkewSymmetric
 
-        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight;
+        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight * target_static_weight;
 
         // 2. Velocity
         // V_D_k - V_est(T)
@@ -253,26 +273,27 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<RadarPoint
         const double p_ele_rad = source[i].ele_angle * M_PI / 180.0f; // 정면 0 윗방향
 
         Eigen::Vector2d point_direction_vector(cos(p_azim_rad), sin(p_azim_rad));
+        Eigen::Vector2d point_direction_vector_ego = rotation_matrix * point_direction_vector;
 
 
 
         // 차량의 속도 벡터와 관측 각도를 통해 도플러 속도 예상. 전진시 음수
-        double est_point_vel = - point_direction_vector.dot(est_sensor_vel_vehicle_coord);
+        double est_point_vel = - point_direction_vector.dot(est_sensor_vel_sensor_coord);
         double vel_residual = source[i].vel - est_point_vel;
 
         Eigen::Matrix1_3d J_v;
 
         // [ - d_k / dt , -d_k x t_s / dt ]
         J_v.block<1,2>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
-        J_v(0,2) = - (point_direction_vector.x() * ego_to_sensor_translation.y() - 
-                      point_direction_vector.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
+        J_v(0,2) = - (point_direction_vector_ego.x() * ego_to_sensor_translation.y() - 
+                      point_direction_vector_ego.y() * ego_to_sensor_translation.x()) / sensor_velocity.time_diff_sec;
 
-        // J_v(0,2) = 0;
 
-        double weight_v = square(vel_th) / square(vel_th + square(vel_residual));
+
+        double weight_v = square(vel_th) / square(vel_th + square(vel_residual)) * range_weight;
 
         // static 속성 부여
-        if(fabs(vel_residual) < vel_th * 3.0){
+        if(fabs(vel_residual) < vel_th * 3.0 && residual_local.norm() < 0.6){
             source[i].is_static = true;
         }
 
@@ -328,6 +349,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocal6DoF(std::vector<RadarPoint> &sour
         Eigen::Matrix3_6d J_r;
 
         double range_weight = 1.0;
+
 
         if(icp_type_ == IcpType::P2PCOV){
 
@@ -392,10 +414,19 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
     Eigen::Matrix6d JTJ_tot = Eigen::Matrix6d::Zero();
     Eigen::Vector6d JTr_tot = Eigen::Vector6d::Zero();
 
+    // yaw 각도를 라디안으로 변환
+    double ego_to_radar_yaw_rad = ego_to_radar_yaw_deg_ * M_PI / 180.0;
+
+    // 회전 행렬 생성 (2D 회전)
+    Eigen::Matrix3d rotation_matrix;
+    rotation_matrix << cos(ego_to_radar_yaw_rad), -sin(ego_to_radar_yaw_rad), 0,
+                    sin(ego_to_radar_yaw_rad),  cos(ego_to_radar_yaw_rad), 0,
+                    0, 0, 1;
+
     Eigen::Vector3d est_sensor_vel_vehicle_coord = sensor_velocity.linear;
     // Eigen::Vector3d est_sensor_vel_vehicle_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y(), 0.0);
-    Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.5);
-    // Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.0);
+    // Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.5);
+    Eigen::Vector3d ego_to_sensor_translation(ego_to_radar_x_m_, 0.0, 0.0);
 
     for (size_t i = 0; i < source.size(); ++i) {
         Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
@@ -407,6 +438,12 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
         Eigen::Matrix3_6d J_r;
 
         double range_weight = 1.0;
+
+        double target_static_weight = 1.0;
+        
+        if(target[i].is_static == false){
+            target_static_weight = 0.01;
+        }
 
         if(icp_type_ == IcpType::P2PCOV){
 
@@ -442,9 +479,12 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
 
         // [ I(3x3), -(T p_k)^ ]
         J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        J_r(2,2) = 0.0; // FIXME: Not optimizing Z for translation
         J_r.block<3, 3>(0, 3) = -1.0 * vectorToSkewSymmetricMatrix(source[i].local);
+        // J_r.block<3, 1>(0, 4) << 0.0, 0.0, 0.0; // FIXME: Not optimizing Pitch for translation
+        // J_r.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity(); // FIXME: Not optimizing Rotation for translation
 
-        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight;
+        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight * target_static_weight;
 
         // 2. Velocity
         // V_D_k - V_est(T)
@@ -454,7 +494,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
         Eigen::Vector3d point_direction_vector(cos(p_ele_rad) * cos(p_azim_rad),
                                                cos(p_ele_rad) * sin(p_azim_rad), 
                                                sin(p_ele_rad));
-        
+        Eigen::Vector3d point_direction_vector_ego = rotation_matrix * point_direction_vector;
 
         // Eigen::Vector3d point_direction_vector(cos(p_azim_rad),sin(p_azim_rad), 0.0);
 
@@ -467,10 +507,17 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
 
         // [ - d_k / dt , -d_k x t_s / dt ]
         J_v.block<1,3>(0,0) = - point_direction_vector.transpose() / sensor_velocity.time_diff_sec;
-        J_v.block<1,3>(0,3) = - (point_direction_vector.cross(ego_to_sensor_translation)).transpose() / sensor_velocity.time_diff_sec;
-        // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO:
+        J_v.block<1,3>(0,3) = - (point_direction_vector_ego.cross(ego_to_sensor_translation)).transpose() / sensor_velocity.time_diff_sec;
+        // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // FIXME: Not Optimizing Rotation for Doppler
+        J_v(0,2) = 0.0; // FIXME: Not optimizing z for Doppler
 
-        double weight_v = square(vel_th) / square(vel_th + square(vel_residual));
+        double weight_v = square(vel_th) / square(vel_th + square(vel_residual)) * range_weight;
+
+        // static 속성 부여
+        if(fabs(vel_residual) < vel_th * 3.0 && residual_local.norm() < 0.6){
+            source[i].is_static = true;
+        }
+
 
         Eigen::Matrix4_6d J_tot;
         Eigen::Matrix1_4d R_tot;
@@ -492,7 +539,9 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<RadarPoint
     }
 
     Eigen::Matrix6d JTJ_tot_diag = JTJ_tot.diagonal().asDiagonal();
-    const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
+    // const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).ldlt().solve(JTr_tot);
+    const Eigen::Vector6d x_tot = (JTJ_tot + lm_lambda_ * JTJ_tot_diag).jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(JTr_tot);
+
 
 
     Eigen::Vector3d rotation_vector = x_tot.tail<3>(); // rpy
@@ -584,7 +633,11 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<RadarPoint> &frame,
         TransformPoints(last_icp_pose, source_local, source_global);
 
         // ICP 종료 조건 확인
-        double rot_norm = estimation_local.block<3, 3>(0, 0).eulerAngles(0, 1, 2).norm();
+        // double rot_norm = estimation_local.block<3, 3>(0, 0).eulerAngles(0, 1, 2).norm();
+
+        Eigen::AngleAxisd angleAxis(estimation_local.block<3, 3>(0, 0));
+        double rot_norm = angleAxis.angle(); 
+
         double transform_norm = rot_norm + estimation_local.block<3, 1>(0, 3).norm();
         std::cout<<"Norm "<<transform_norm<<"\t r_norm: "<<rot_norm<<"\t s_norm: "<<estimation_local.block<3, 1>(0, 3).norm()<<std::endl;
         if (transform_norm < ESTIMATION_THRESHOLD_) break;

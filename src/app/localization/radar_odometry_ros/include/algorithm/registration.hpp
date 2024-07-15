@@ -51,12 +51,12 @@ struct Registration{
     explicit Registration(IcpType icp_type, bool icp_3dof, double lm_lambda, 
             bool icp_doppler, double doppler_gm_th, double doppler_trans_lambda,
             double range_variance_m, double azimuth_variance_deg, double elevation_variance_deg, double gicp_max_point,
-            double ego_to_radar_x_m)
+            double ego_to_radar_x_m, double ego_to_radar_yaw_deg)
             :icp_type_(icp_type),  icp_3dof_(icp_3dof), lm_lambda_(lm_lambda),
             icp_doppler_(icp_doppler), doppler_gm_th_(doppler_gm_th), doppler_trans_lambda_(doppler_trans_lambda),
             range_variance_m_(range_variance_m), azimuth_variance_deg_(azimuth_variance_deg), 
             elevation_variance_deg_(elevation_variance_deg), gicp_max_point_(gicp_max_point),
-            ego_to_radar_x_m_(ego_to_radar_x_m) {}
+            ego_to_radar_x_m_(ego_to_radar_x_m), ego_to_radar_yaw_deg_(ego_to_radar_yaw_deg) {}
 
 
     // Debug Local
@@ -108,6 +108,7 @@ struct Registration{
     double elevation_variance_deg_;
     int gicp_max_point_;
     double ego_to_radar_x_m_;
+    double ego_to_radar_yaw_deg_;
 };
 }
 
