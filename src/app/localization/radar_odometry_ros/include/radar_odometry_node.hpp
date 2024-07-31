@@ -244,7 +244,6 @@ class RadarOdometryNode : public AtomTask {
         double d_last_radar_time_sec_;
         Eigen::Matrix4d radar_pose_;
         Eigen::Matrix4d last_radar_pose_;
-        Eigen::Matrix4d radar_calib_pose_;
 
         // Configure
         std::string cfg_str_sensor_type_;

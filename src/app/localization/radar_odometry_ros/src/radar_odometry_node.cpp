@@ -25,7 +25,6 @@ RadarOdometryNode::RadarOdometryNode(int id, std::string task_node, double perio
 
     radar_pose_ = Eigen::Matrix4d::Identity();
     last_radar_pose_ = Eigen::Matrix4d::Identity();
-    radar_calib_pose_ = Eigen::Matrix4d::Identity();
     d_last_radar_time_sec_ = 0.0f;
 }
 
@@ -50,11 +49,6 @@ void RadarOdometryNode::Init()
     p_radar_vel_heading_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("radar_vel_heading_markers", 10);
     p_odom_ = nh.advertise<nav_msgs::Odometry>("radar_odom", 10);
 
-    //
-    radar_calib_pose_(0, 0) = std::cos(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
-    radar_calib_pose_(0, 1) = -std::sin(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
-    radar_calib_pose_(1, 0) = std::sin(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
-    radar_calib_pose_(1, 1) = std::cos(cfg_d_ego_to_radar_yaw_deg_*M_PI/180.0);
 
     // #ifdef USE_TBB
     //     ROS_INFO("Building with TBB support");
@@ -62,8 +56,6 @@ void RadarOdometryNode::Init()
     //     ROS_INFO("Building without TBB support");
     // #endif
 
-    config_.ego_to_radar_x_m = cfg_d_ego_to_radar_x_m_;
-    config_.ego_to_radar_yaw_deg = cfg_d_ego_to_radar_yaw_deg_;
     config_.odometry_type = radar_odometry::pipeline::OdometryType(cfg_i_odometry_type_);
     config_.icp_type = radar_odometry::IcpType(cfg_i_icp_type_);
 
@@ -112,7 +104,6 @@ void RadarOdometryNode::Publish()
 
     //
     Eigen::Matrix4d calibrated_radar_pose = radar_pose_;
-// Eigen::Matrix4d calibrated_radar_pose = radar_pose_ * radar_calib_pose_;
 
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time::now();
@@ -180,10 +171,22 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/icp_type");
         }
 
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_x_m", cfg_d_ego_to_radar_x_m_) == false ) {
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_x_m", config_.ego_to_radar_x_m) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_x_m");
         }
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_yaw_deg", cfg_d_ego_to_radar_yaw_deg_) == false ) {
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_y_m", config_.ego_to_radar_y_m) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_y_m");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_z_m", config_.ego_to_radar_z_m) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_z_m");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_roll_deg", config_.ego_to_radar_roll_deg) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_roll_deg");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_pitch_deg", config_.ego_to_radar_pitch_deg) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_pitch_deg");
+        }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "ego_to_radar_yaw_deg", config_.ego_to_radar_yaw_deg) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/ego_to_radar_yaw_deg");
         }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "radar_delay_sec", cfg_d_radar_delay_sec_) == false ) {
@@ -384,7 +387,7 @@ void RadarOdometryNode::ProcessRadarFile(std::string& vod_seq_folder_path, bool 
     // Parse pose JSON files
     std::vector<Eigen::Affine3d> gt_odom2radar_transforms;
     ParsePoseJsonFiles(pose_files, cam2radar_transform, gt_odom2radar_transforms);
-    std::cout << "[ProcessRadarFile] JSON File Read Complete" << std::endl;
+    std::cout << "[ProcessRadarFile] JSON File Read Complete. Num: "<<gt_odom2radar_transforms.size() << std::endl;
 
     // Ego motion-only estimation
     std::vector<Eigen::Affine3d> ego_motion_only_transforms;
@@ -446,13 +449,19 @@ void RadarOdometryNode::ProcessRadarFile(std::string& vod_seq_folder_path, bool 
         if (b_debug_mode)
         {
             std::cout << "Press any key to continue..." << std::endl;
-            std::cin.get();
+            // std::cin.get();
+            std::string input;
+            std::cin >> input;
+
+            if (input == "q" || input == "Q") {
+                break;
+            }
         }
 
         // ros spin 20hz
         if(ros::ok())
         {
-            ros::Rate loop_rate(20);
+            ros::Rate loop_rate(100);
             loop_rate.sleep();
         }
         else{
@@ -532,7 +541,7 @@ void RadarOdometryNode::GetRadarFiles(std::string& radar_directory_path, std::ve
 void RadarOdometryNode::ParsePoseJsonFiles(const std::vector<std::filesystem::path>& pose_files, const Eigen::Affine3d& cam2radar_tfrom, std::vector<Eigen::Affine3d>& odom2radar_transforms)
 {
     odom2radar_transforms.clear();
-    odom2radar_transforms.reserve(pose_files.size());
+    // odom2radar_transforms.reserve(pose_files.size());
 
     bool b_first_pose = true;
     Eigen::Affine3d first_odom2radar;
@@ -540,6 +549,7 @@ void RadarOdometryNode::ParsePoseJsonFiles(const std::vector<std::filesystem::pa
     for (const auto& file_path : pose_files) {
         std::ifstream file(file_path);
 
+        // 파일 잘 열리는지 확인
         if (!file.is_open()) {
             std::cerr << "Failed to open file: " << file_path << std::endl;
             continue;
@@ -589,7 +599,7 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
             std::isnan(vod_point.v_r) || std::isnan(vod_point.RCS)) {
             continue; // 유효하지 않은 값이 있으면 스킵
         }
-        
+
         SRadarPoint iter_point;
         iter_point.pose.x() = vod_point.x;
         iter_point.pose.y() = vod_point.y;
@@ -597,6 +607,7 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
         iter_point.local = iter_point.pose;
 
         iter_point.power = vod_point.RCS;
+        iter_point.rcs = vod_point.RCS;
         iter_point.range = iter_point.pose.norm();
         iter_point.vel = vod_point.v_r;
         iter_point.azi_angle = atan2(iter_point.pose.y(),iter_point.pose.x()) * 180.0/M_PI;

@@ -27,7 +27,8 @@ std::vector<SRadarPoint> VelFiltering(const std::vector<SRadarPoint> cloud,
                                          cos(p_ele_rad) * sin(p_azim_rad), 
                                          sin(p_ele_rad));
         
-        double vel_predict = - point_direction_vector.dot(linear_vel + angular_vel.cross(ego_to_sensor_translation));
+        // double vel_predict = - point_direction_vector.dot(linear_vel + angular_vel.cross(ego_to_sensor_translation));
+        double vel_predict = - point_direction_vector.dot(linear_vel);
 
         if (std::abs(vel_predict - cloud[i].vel) <= margin) {
             vec_inliers.push_back(i);

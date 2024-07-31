@@ -52,6 +52,10 @@ typedef enum {
 
 struct RadarOdometryConfig{
     double ego_to_radar_x_m = 1.0;
+    double ego_to_radar_y_m = 0.0;
+    double ego_to_radar_z_m = 0.0;
+    double ego_to_radar_roll_deg = 0.0;
+    double ego_to_radar_pitch_deg = 0.0;
     double ego_to_radar_yaw_deg = 0.0;
     OdometryType odometry_type = OdometryType::EGOMOTION;
     IcpType icp_type = IcpType::P2P;
@@ -101,7 +105,8 @@ public:
         registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
                     config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
                     config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point,
-                    config.ego_to_radar_x_m, config.ego_to_radar_yaw_deg)
+                    config.ego_to_radar_x_m, config.ego_to_radar_y_m, config.ego_to_radar_z_m, 
+                    config.ego_to_radar_roll_deg, config.ego_to_radar_pitch_deg, config.ego_to_radar_yaw_deg)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}

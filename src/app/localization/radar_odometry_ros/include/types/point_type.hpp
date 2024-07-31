@@ -87,6 +87,7 @@ struct SRadarPoint {
 
 
     double power; // TODO: Power residual? (07/15).
+    double rcs;
     double range; // m
     double vel; // mps
     double azi_angle; // deg Right to Left
@@ -101,7 +102,7 @@ struct SRadarPoint {
     SRadarPoint()
         : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()),
           local(Eigen::Vector3d::Zero()),
-          sensor_pose(Eigen::Matrix4d::Identity()), power(0.0),
+          sensor_pose(Eigen::Matrix4d::Identity()), power(0.0), rcs(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
           frame_idx(0), timestamp(0.0), is_static(false){}
 
@@ -115,6 +116,7 @@ struct SRadarPoint {
         local.setZero();
         sensor_pose.setZero();
         power = 0.0;
+        rcs = 0.0;
         range = 0.0;
         vel = 0.0;
         azi_angle = 0.0;
