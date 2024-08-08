@@ -263,6 +263,10 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/output_map_max_range");
         }
 
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "vod_dt", vod_dt_) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/vod_dt_");
+        }
+
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }
 }
@@ -364,7 +368,6 @@ void RadarOdometryNode::ProcessRadarFiles()
 
             // Init class
             Init();
-            // odom_kiss_icp.Init();
         }
     }
     else // only one folder
@@ -428,7 +431,6 @@ void RadarOdometryNode::ProcessRadarFile(std::string& vod_seq_folder_path, bool 
         // Run odometry for each .bin files
         RunRadarOdometry(i_radar_struct_);
 
-        b_is_new_point_cloud_ = false;
         Eigen::Affine3d result_tf(radar_pose_);
         estimate_odom2radar_transforms.push_back(result_tf);
         // ego_motion_only_transforms.push_back(result_ego_motion_estimation_);
@@ -588,6 +590,7 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
 {
     o_s_radar_points.clear();
     std::vector<SRadarPoint> points;
+    
 
     VodRadarPointType vod_point;
     while (bin_file.read((char*)&vod_point, sizeof(VodRadarPointType))) {
@@ -617,7 +620,7 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
         iter_point.ele_angle = atan2(iter_point.pose.z(),
                                 sqrt(iter_point.pose.x()*iter_point.pose.x() +
                                     iter_point.pose.y()*iter_point.pose.y())) * 180.0/M_PI;
-        iter_point.timestamp = 0.1*time_idx;
+        iter_point.timestamp = vod_dt_*time_idx;
             
         points.push_back(iter_point);
 
@@ -626,7 +629,7 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
     // Publishing Current Reading Points
     sensor_msgs::PointCloud2 output;
     std_msgs::Header header;
-    header.stamp = ros::Time(0.1*time_idx);
+    header.stamp = ros::Time(vod_dt_*time_idx);
     header.frame_id = "radar";
     output = *SRadarPointToPointCloud2(points, header);
     rospub_vod_radar_points_.publish(output);
@@ -634,11 +637,10 @@ void RadarOdometryNode::ConvertBin2PointCloud(std::ifstream& bin_file, std::vect
     
     o_s_radar_points = points;
 
-    i_radar_struct_.timestamp = 0.1*time_idx;
+    i_radar_struct_.timestamp = vod_dt_*time_idx;
     i_radar_struct_.points = points;
     i_radar_struct_.frame_id = "radar";
 
-    b_is_new_point_cloud_ = true;
 }
 
 Eigen::Affine3d RadarOdometryNode::jsonToAffine3d(const nlohmann::json& json)

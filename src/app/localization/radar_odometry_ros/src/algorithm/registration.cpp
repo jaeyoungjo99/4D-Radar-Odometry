@@ -89,6 +89,10 @@ double Sigmoid(const double x){
     return 1.0 / (1.0 + exp(-x));
 }
 
+double Sigmoid(const double x, const double min_x, const double max_x){
+    double norm_x = (x - min_x) / (max_x - min_x);
+    return 1.0 / (1.0 + exp(-x));
+}
 
 }
 
@@ -134,7 +138,7 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler3DoF(std::vector<SRadarPoin
         double target_static_weight = 1.0;
         
         if(target[i].is_static == false){
-            target_static_weight = 0.1;
+            target_static_weight = 0.01;
         }
 
         if(icp_type_ == IcpType::P2PCOV){
@@ -372,9 +376,9 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
         // std::cout<<"RCS dB: " << source[i].rcs <<
         //         " Amp: "<<  std::pow(10, source[i].rcs/ 10.0) << std::endl;
 
-        double normalized_rcs = (source[i].rcs - 0.0)/(100.0 - 0.0);
-        if(normalized_rcs > 1.0) normalized_rcs = 1.0;
-
+        // double normalized_rcs = (source[i].rcs - 0.0)/(100.0 - 0.0);
+        // if(normalized_rcs > 1.0) normalized_rcs = 1.0;
+        double normalized_rcs = source[i].rcs;
         double rcs_weight = 1.0;
 
         if(use_rcs_weight_)
@@ -424,11 +428,11 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
         J_v.block<1,3>(0,0) = - point_direction_vector_sensor.transpose() / sensor_velocity.time_diff_sec;
 
         //  ( d_p X T_VR )^T / dt
-        // J_v.block<1,3>(0,3) =  (point_direction_vector_ego.cross(ego_to_radar_translation)).transpose() / sensor_velocity.time_diff_sec;
-        J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO: if state is sensor frame, Doppler cannot optimize Rotation
+        J_v.block<1,3>(0,3) =  (point_direction_vector_ego.cross(ego_to_radar_translation)).transpose() / sensor_velocity.time_diff_sec;
+        // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO: if state is sensor frame, Doppler cannot optimize Rotation
         // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // FIXME: Not Optimizing Rotation for Doppler
 
-        double weight_v = square(vel_th) / square(vel_th + square(vel_residual)) * range_weight;
+        double weight_v = square(vel_th) / square(vel_th + square(vel_residual)) * range_weight * target_static_weight;
 
         if(std::isnan(weight_v)){
             continue;
@@ -438,10 +442,6 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
         if(fabs(vel_residual) < vel_th * 3.0 && residual_local.norm() < 0.6){
             source[i].is_static = true;
         }
-
-        // TODO: Geometric ICP Roll Pitch weight 0.1
-        // J_g.block<3,1>(0,3) = 0.0 * J_g.block<3,1>(0,3); // Roll
-        // J_g.block<3,1>(0,4) = 1.0 * J_g.block<3,1>(0,4); // Pitch
 
 
         Eigen::Matrix4_6d J_tot;
@@ -882,6 +882,11 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<SRadarPoint> &frame,
     std::vector<SRadarPoint> source_local = frame;  
 
     std::cout<<"[RunRegister] Input Frame num: "<<frame.size()<<std::endl;
+
+    // TODO: RCS 실험
+    // CalGridWiseRcs(source_local, 2.0, 2.0, 10.0);
+    CalGridWiseRcs(source_local, 2.0, 2.0, 2.0, 10.0);
+
 
     // 1. Global 좌표계의 source 생성 및 point uncertaintly 계산
     if(icp_3dof_ == true){

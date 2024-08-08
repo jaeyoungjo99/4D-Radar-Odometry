@@ -127,6 +127,12 @@ struct SRadarPoint {
     }
 };
 
+typedef struct {
+    double timestamp; 
+    std::vector<SRadarPoint> points;
+    std::string frame_id;
+} RadarDataStruct;
+
 struct Velocity {
     Eigen::Vector3d linear;  // 선형 속도
     Eigen::Vector3d angular; // 각속도
@@ -270,6 +276,85 @@ inline void CalFramePointCov2d(std::vector<SRadarPoint> &points, double range_va
                         SRadarPoint cov_point = CalPointCov2d(point, range_var_m, azim_var_deg);
                         return cov_point;
                    });
+}
+
+inline void CalGridWiseRcs(std::vector<SRadarPoint> &points, const double grid_range, const double grid_angle_deg, const double thr) {
+    // 그리드 맵을 구성하는 자료구조 (range, angle)를 키로 하여 포인트를 저장
+    std::map<std::pair<int, int>, std::vector<SRadarPoint*>> grid_map;
+
+    // 포인트를 그리드에 할당
+    for (auto& point : points) {
+        int range_idx = static_cast<int>(point.range / grid_range);
+        int angle_idx = static_cast<int>(point.azi_angle / grid_angle_deg);
+        grid_map[std::make_pair(range_idx, angle_idx)].push_back(&point);
+    }
+
+    // 각 그리드 내에서 rcs를 정규화
+    for (auto& grid : grid_map) {
+        auto& grid_points = grid.second;
+        if (grid_points.empty()) continue;
+
+        // 그리드 내 최소 및 최대 rcs 값 찾기
+        auto minmax_rcs = std::minmax_element(grid_points.begin(), grid_points.end(),
+                                              [](const SRadarPoint* a, const SRadarPoint* b) {
+                                                  return a->rcs < b->rcs;
+                                              });
+
+        double min_rcs = (*minmax_rcs.first)->rcs;
+        double max_rcs = (*minmax_rcs.second)->rcs;
+
+        // 최대와 최소의 차이가 thr 이하인 경우 모든 rcs를 0으로 설정
+        if (max_rcs - min_rcs <= thr) {
+            for (auto* point : grid_points) {
+                point->rcs = 0.0;
+            }
+        } else {
+            // rcs 값을 0에서 1로 정규화
+            for (auto* point : grid_points) {
+                point->rcs = (point->rcs - min_rcs) / (max_rcs - min_rcs);
+            }
+        }
+    }
+}
+
+inline void CalGridWiseRcs(std::vector<SRadarPoint> &points, const double grid_range, const double grid_azi_angle_deg, const double grid_ele_angle_deg, const double thr) {
+    // 그리드 맵을 구성하는 자료구조 (range, azi_angle, ele_angle)를 키로 하여 포인트를 저장
+    std::map<std::tuple<int, int, int>, std::vector<SRadarPoint*>> grid_map;
+
+    // 포인트를 그리드에 할당
+    for (auto& point : points) {
+        int range_idx = static_cast<int>(point.range / grid_range);
+        int azi_angle_idx = static_cast<int>(point.azi_angle / grid_azi_angle_deg);
+        int ele_angle_idx = static_cast<int>(point.ele_angle / grid_ele_angle_deg);
+        grid_map[std::make_tuple(range_idx, azi_angle_idx, ele_angle_idx)].push_back(&point);
+    }
+
+    // 각 그리드 내에서 rcs를 정규화
+    for (auto& grid : grid_map) {
+        auto& grid_points = grid.second;
+        if (grid_points.empty()) continue;
+
+        // 그리드 내 최소 및 최대 rcs 값 찾기
+        auto minmax_rcs = std::minmax_element(grid_points.begin(), grid_points.end(),
+                                              [](const SRadarPoint* a, const SRadarPoint* b) {
+                                                  return a->rcs < b->rcs;
+                                              });
+
+        double min_rcs = (*minmax_rcs.first)->rcs;
+        double max_rcs = (*minmax_rcs.second)->rcs;
+
+        // 최대와 최소의 차이가 thr 이하인 경우 모든 rcs를 0으로 설정
+        if (max_rcs - min_rcs <= thr) {
+            for (auto* point : grid_points) {
+                point->rcs = 0.0;
+            }
+        } else {
+            // rcs 값을 0에서 1로 정규화
+            for (auto* point : grid_points) {
+                point->rcs = (point->rcs - min_rcs) / (max_rcs - min_rcs);
+            }
+        }
+    }
 }
 
 inline std::string FixFrameId(const std::string &frame_id) {

@@ -94,12 +94,6 @@ using namespace ros;
 using namespace std;
 // using namespace autoku_types;
 
-typedef struct {
-    double timestamp; 
-    std::vector<SRadarPoint> points;
-    std::string frame_id;
-} RadarDataStruct;
-
 typedef struct{
     double timestamp;
 
@@ -261,6 +255,8 @@ class RadarOdometryNode : public AtomTask {
 
         radar_odometry::pipeline::RadarOdometry odometry_;
         radar_odometry::pipeline::RadarOdometryConfig config_;
+
+        double vod_dt_ = 0.12;
         
         
 };
