@@ -3,8 +3,6 @@
   <node pkg="radar_odometry_ros" type="radar_odometry_ros" name="radar_odometry_ros" output="screen" respawn="false">
     <param name="b_flag_run_vod_dataset"  value="true"/>
     <param name="b_debug_mode"            value="false"/>
-    <param name="i_save_odom_txt_type_"   value="1"/> <!-- 1: KITTI, 2: TUM -->
-    <param name="str_base_link_"          value="KUSV"/> <!-- 1: KITTI, 2: TUM -->
     <!-- 03 04 09 17 19 22 24 -->
     <param name="vod_seq_folder_path"     value="/mnt/c/Users/Alien02/Documents/rosbag/View-of-Delft/testset/03"/>
     <param name="b_eval_whold_seq"        value="false"/> 

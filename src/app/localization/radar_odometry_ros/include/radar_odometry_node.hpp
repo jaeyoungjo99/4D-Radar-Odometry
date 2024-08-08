@@ -87,6 +87,7 @@
 #include "types/point_type.hpp"
 
 #include "radar_odometry.hpp"
+#include "evaluation/vod_evaluation.hpp"
 
 // Namespace
 using namespace ros;
@@ -115,21 +116,7 @@ class RadarOdometryNode : public AtomTask {
         void Terminate();
         void ProcessINI();
 
-        void ProcessRadarFiles();
-
     private:
-        void ProcessRadarFile(std::string& vod_seq_folder_path, bool b_debug_mode, std::string& vod_eval_folder_path);
-        void savePosesToFile(const std::vector<Eigen::Affine3d>& poses, const std::string& filename);
-        void GetPoseJsonFiles(std::string& pose_directory_path, std::vector<std::filesystem::path>& pose_files);
-        void GetRadarFiles(std::string& radar_directory_path, std::vector<std::filesystem::path>& radar_files);
-        void ParsePoseJsonFiles(const std::vector<std::filesystem::path>& pose_files, const Eigen::Affine3d& cam2radar_tfrom, std::vector<Eigen::Affine3d>& odom2radar_transforms);
-        void ConvertBin2PointCloud(std::ifstream& bin_file, std::vector<SRadarPoint>& o_s_radar_points, int time_idx);
-        Eigen::Affine3d jsonToAffine3d(const nlohmann::json& json);
-        // Pub GT
-        void pubVodGtPose(const Eigen::Affine3d& vod_gt_pose);
-        void BroadcastTFAndVisualizeOdomPose(const Eigen::Affine3d& result_tf_in_ego_pose);
-        void VisualizeAndPubOdomPose(double odom_x, double odom_y, double odom_z, tf::Quaternion odom_rpy);
-
 
         // VOD
         // Calibration params
@@ -139,9 +126,6 @@ class RadarOdometryNode : public AtomTask {
 
         geometry_msgs::PoseStamped novatel_pose_stamped_;
         geometry_msgs::PoseStamped radar_odom_pose_stamped_;
-
-        int i_save_odom_txt_type_; // 1: KITTI, 2: TUM
-        std::string str_base_link_;
 
     private:
         inline void CallbackPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg) {
@@ -177,7 +161,8 @@ class RadarOdometryNode : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
-        
+    public:
+        VodEvaluation vod_evaluation_;
 
     private:
         mutex mutex_main_point_cloud_;
@@ -194,18 +179,6 @@ class RadarOdometryNode : public AtomTask {
         ros::Publisher p_cur_radar_global_cloud_;
         ros::Publisher p_radar_vel_heading_marker_array_;
         ros::Publisher p_odom_;
-
-        // VOD
-        ros::Publisher rospub_odom_accumulated_map_;
-        ros::Publisher rospub_radar_ego_motion_odom_;
-        ros::Publisher rospub_nov_pose_;
-        ros::Publisher rospub_radar_odom_pose_;
-        ros::Publisher rospub_radar_odom_pose_stamped_;
-        ros::Publisher rospub_vod_radar_points_;
-        ros::Publisher rospub_gt_odom_pose_;
-        ros::Publisher rospub_correspondences_;
-        ros::Publisher rospub_novatel_ref_pose_stamped_;
-        ros::Publisher rospub_radar_odom_eval_pose_stamped_;
 
         // input
         sensor_msgs::PointCloud2 i_point_cloud2_msg_;
@@ -257,6 +230,8 @@ class RadarOdometryNode : public AtomTask {
         radar_odometry::pipeline::RadarOdometryConfig config_;
 
         double vod_dt_ = 0.12;
+
+        
         
         
 };
