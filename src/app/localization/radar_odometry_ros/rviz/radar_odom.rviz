@@ -263,18 +263,6 @@ Visualization Manager:
       Use rainbow: true
       Value: false
     - Class: rviz/Image
-      Enabled: false
-      Image Topic: /a2A1920/image_raw
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: compressed
-      Unreliable: false
-      Value: false
-    - Class: rviz/Image
       Enabled: true
       Image Topic: /a2A1920/image_raw
       Max Value: 1
@@ -286,6 +274,18 @@ Visualization Manager:
       Transport Hint: compressed
       Unreliable: false
       Value: true
+    - Class: rviz/Image
+      Enabled: false
+      Image Topic: /a2A1920/image_raw
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Image
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: compressed
+      Unreliable: false
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -492,7 +492,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 27.73078727722168
+      Distance: 48.87112045288086
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -508,9 +508,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4353981614112854
+      Pitch: 1.5697963237762451
       Target Frame: radar
-      Yaw: 3.195399522781372
+      Yaw: 3.105400323867798
     Saved: ~
 Window Geometry:
   Displays:

@@ -76,7 +76,10 @@ struct RadarOdometryConfig{
 
     bool icp_3dof = true;
     bool icp_doppler = true;
+
     double doppler_gm_th = 0.5;
+    bool use_rcs_weight = true;
+    
     double doppler_trans_lambda = 0.5;
     int icp_min_point_num = 10;
 
@@ -103,7 +106,7 @@ public:
         adaptive_threshold_(config.initial_trans_threshold, config.initial_vel_threshold,
             config.min_motion_th, config.max_range),
         registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
-                    config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
+                    config.doppler_gm_th, config.use_rcs_weight, config.doppler_trans_lambda, config.range_variance_m,
                     config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point,
                     config.ego_to_radar_x_m, config.ego_to_radar_y_m, config.ego_to_radar_z_m, 
                     config.ego_to_radar_roll_deg, config.ego_to_radar_pitch_deg, config.ego_to_radar_yaw_deg)

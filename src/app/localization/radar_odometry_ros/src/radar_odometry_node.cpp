@@ -229,6 +229,9 @@ void RadarOdometryNode::ProcessINI()
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_gm_th", config_.doppler_gm_th) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_gm_th");
         }
+        if ( v_ini_parser_.ParseConfig("radar_odometry", "use_rcs_weight", config_.use_rcs_weight) == false ) {
+            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/use_rcs_weight");
+        }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "doppler_trans_lambda", config_.doppler_trans_lambda) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/doppler_trans_lambda");
         }

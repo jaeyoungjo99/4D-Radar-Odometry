@@ -85,6 +85,10 @@ Eigen::Matrix3d vectorToSkewSymmetricMatrix(const Eigen::Vector3d& vec) {
     return skew_symmetric;
 }
 
+double Sigmoid(const double x){
+    return 1.0 / (1.0 + exp(-x));
+}
+
 
 }
 
@@ -302,8 +306,10 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
     Eigen::Vector3d est_sensor_vel_ego_coord = ego_to_radar_rot_mat * est_sensor_vel_sensor_coord;
 
     
-    // Eigen::Vector3d est_sensor_vel_sensor_coord(sensor_velocity.linear.x(), sensor_velocity.linear.y(), 0.0);
-    // Eigen::Vector3d ego_to_radar_translation(ego_to_radar_x_m_, 0.0, 0.0);
+    double tot_rcs_db = 0.0;
+    double tot_rcs = 0.0;
+    // rcs_weight_sum += rcs_weight;
+    int rcs_num = 0;
 
     for (size_t i = 0; i < source.size(); ++i) {
         Eigen::Vector4d hom_point(target[i].pose.x(), target[i].pose.y(), target[i].pose.z(), 1.0);
@@ -355,12 +361,31 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
 
         }
 
+        // RCS
+
+
+        tot_rcs_db += source[i].rcs;
+        tot_rcs += std::pow(10, source[i].rcs/ 10.0);
+        // rcs_weight_sum += rcs_weight;
+        rcs_num++;
+
+        // std::cout<<"RCS dB: " << source[i].rcs <<
+        //         " Amp: "<<  std::pow(10, source[i].rcs/ 10.0) << std::endl;
+
+        double normalized_rcs = (source[i].rcs - 0.0)/(100.0 - 0.0);
+        if(normalized_rcs > 1.0) normalized_rcs = 1.0;
+
+        double rcs_weight = 1.0;
+
+        if(use_rcs_weight_)
+            rcs_weight = Sigmoid(normalized_rcs);
+
 
         // [ I(3x3), -(T p_k)^ ]
         J_g.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
         J_g.block<3, 3>(0, 3) = -1.0 * vectorToSkewSymmetricMatrix(source[i].local);
 
-        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight * target_static_weight;
+        double weight_t = square(trans_th) / square(trans_th + residual_local.squaredNorm()) * range_weight * target_static_weight * rcs_weight; 
 
         if(std::isnan(weight_t)){
             continue;
@@ -402,7 +427,6 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
         // J_v.block<1,3>(0,3) =  (point_direction_vector_ego.cross(ego_to_radar_translation)).transpose() / sensor_velocity.time_diff_sec;
         J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // TODO: if state is sensor frame, Doppler cannot optimize Rotation
         // J_v.block<1,3>(0,3) << 0.0, 0.0, 0.0; // FIXME: Not Optimizing Rotation for Doppler
-        // J_v(0,2) = 0.0; // FIXME: Not optimizing z for Doppler
 
         double weight_v = square(vel_th) / square(vel_th + square(vel_residual)) * range_weight;
 
@@ -438,6 +462,8 @@ Eigen::Matrix4d Registration::AlignCloudsLocalDoppler6DoF(std::vector<SRadarPoin
         JTr.noalias() += J_tot.transpose() * R_tot.transpose(); // 6x4 4x1 = 6x1
 
     }
+
+    std::cout<<"AVG RCS Db: " << tot_rcs_db/rcs_num <<" Amp: "<<tot_rcs/rcs_num <<std::endl;
 
     Eigen::Matrix6d JTJ_diag = JTJ.diagonal().asDiagonal();
     // const Eigen::Vector6d x_tot = (JTJ + lm_lambda_ * JTJ_diag).ldlt().solve(JTr);
@@ -900,10 +926,10 @@ Eigen::Matrix4d Registration::RunRegister(const std::vector<SRadarPoint> &frame,
         }
         else{
             Velocity iter_velocity = CalculateVelocity(last_pose.inverse() * last_icp_pose, dt); // last pose 기준 상대속도
-            // estimation_local = AlignCloudsLocalDoppler6DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, 
-            //                                                     trans_sigma / 3.0, vel_sigma / 3.0);
-            estimation_local = AlignCloudsLocalDoppler6DoFAll(source_indices, frame_global, target_c_global, last_icp_pose, iter_velocity, 
+            estimation_local = AlignCloudsLocalDoppler6DoF(source_c_global, target_c_global, last_icp_pose, iter_velocity, 
                                                                 trans_sigma / 3.0, vel_sigma / 3.0);
+            // estimation_local = AlignCloudsLocalDoppler6DoFAll(source_indices, frame_global, target_c_global, last_icp_pose, iter_velocity, 
+            //                                                     trans_sigma / 3.0, vel_sigma / 3.0);
             // estimation_local = AlignCloudsLocalDoppler6DoFEgo(source_c_global, target_c_global, last_icp_pose, iter_velocity, 
             //                                                     trans_sigma / 3.0, vel_sigma / 3.0);
 

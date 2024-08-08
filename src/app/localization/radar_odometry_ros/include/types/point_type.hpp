@@ -289,6 +289,7 @@ inline std::unique_ptr<sensor_msgs::PointCloud2> CreatePointCloud2Msg(const size
     offset = addPointField(*cloud_msg, "y", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "z", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "power", 1, sensor_msgs::PointField::FLOAT32, offset);
+    offset = addPointField(*cloud_msg, "rcs", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "range", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "vel", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "azi_angle", 1, sensor_msgs::PointField::FLOAT32, offset);
