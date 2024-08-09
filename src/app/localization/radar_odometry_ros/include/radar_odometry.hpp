@@ -52,6 +52,10 @@ typedef enum {
 
 struct RadarOdometryConfig{
     double ego_to_radar_x_m = 1.0;
+    double ego_to_radar_y_m = 0.0;
+    double ego_to_radar_z_m = 0.0;
+    double ego_to_radar_roll_deg = 0.0;
+    double ego_to_radar_pitch_deg = 0.0;
     double ego_to_radar_yaw_deg = 0.0;
     OdometryType odometry_type = OdometryType::EGOMOTION;
     IcpType icp_type = IcpType::P2P;
@@ -72,7 +76,10 @@ struct RadarOdometryConfig{
 
     bool icp_3dof = true;
     bool icp_doppler = true;
+
     double doppler_gm_th = 0.5;
+    bool use_rcs_weight = true;
+    
     double doppler_trans_lambda = 0.5;
     int icp_min_point_num = 10;
 
@@ -90,8 +97,8 @@ struct RadarOdometryConfig{
 
 class RadarOdometry{
 public:
-    using RadarPointVector = std::vector<RadarPoint>;
-    using RadarPointVectorTuple = std::tuple<std::vector<RadarPoint>, std::vector<RadarPoint>>;
+    using RadarPointVector = std::vector<SRadarPoint>;
+    using RadarPointVectorTuple = std::tuple<std::vector<SRadarPoint>, std::vector<SRadarPoint>>;
 public:
     explicit RadarOdometry(const RadarOdometryConfig &config)
         : config_(config),
@@ -99,15 +106,16 @@ public:
         adaptive_threshold_(config.initial_trans_threshold, config.initial_vel_threshold,
             config.min_motion_th, config.max_range),
         registration_(config.icp_type, config.icp_3dof, config.lm_lambda,  config.icp_doppler,
-                    config.doppler_gm_th, config.doppler_trans_lambda, config.range_variance_m,
+                    config.doppler_gm_th, config.use_rcs_weight, config.doppler_trans_lambda, config.range_variance_m,
                     config.azimuth_variance_deg, config.elevation_variance_deg, config.gicp_max_point,
-                    config.ego_to_radar_x_m, config.ego_to_radar_yaw_deg)
+                    config.ego_to_radar_x_m, config.ego_to_radar_y_m, config.ego_to_radar_z_m, 
+                    config.ego_to_radar_roll_deg, config.ego_to_radar_pitch_deg, config.ego_to_radar_yaw_deg)
         {}
 
     RadarOdometry() : RadarOdometry(RadarOdometryConfig{}) {}
 
 public:
-    RadarPointVectorTuple RegisterPoints(const std::vector<RadarPoint> i_radar_points, const double i_radar_timestamp_sec);
+    RadarPointVectorTuple RegisterPoints(const std::vector<SRadarPoint> i_radar_points, const double i_radar_timestamp_sec);
     Eigen::Matrix4d GetPredictionModel() const;
     Eigen::Matrix4d GetPredictionModel(double cur_timestamp) const;
     
@@ -116,8 +124,8 @@ public:
     bool HasMoved();
 
 public:
-    std::vector<RadarPoint> LocalMap() const {return local_map_.Pointcloud();};
-    std::vector<RadarPoint> StaticLocalMap() const { return local_map_.StaticPointcloud();};
+    std::vector<SRadarPoint> LocalMap() const {return local_map_.Pointcloud();};
+    std::vector<SRadarPoint> StaticLocalMap() const { return local_map_.StaticPointcloud();};
     std::vector<Eigen::Matrix4d> poses() const {return poses_;};
 
 private:
@@ -129,7 +137,7 @@ private:
     Registration registration_;
 
     double d_last_radar_time_sec_;
-    std::vector<RadarPoint> last_radar_ptr;
+    std::vector<SRadarPoint> last_radar_ptr;
 };
 
 }

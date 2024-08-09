@@ -43,7 +43,7 @@ std::vector<Eigen::Vector3d> Preprocess(const std::vector<Eigen::Vector3d> &fram
                                         double max_range,
                                         double min_range);
 
-std::vector<RadarPoint> Preprocess(const std::vector<RadarPoint> &frame,
+std::vector<SRadarPoint> Preprocess(const std::vector<SRadarPoint> &frame,
                                         double max_range,
                                         double min_range);
 

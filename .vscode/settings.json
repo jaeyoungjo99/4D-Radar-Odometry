@@ -86,6 +86,8 @@
         "filesystem": "cpp",
         "core": "cpp",
         "numericaldiff": "cpp",
-        "matrixfunctions": "cpp"
+        "matrixfunctions": "cpp",
+        "forward_list": "cpp",
+        "valarray": "cpp"
     }
 }

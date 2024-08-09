@@ -7,11 +7,11 @@ namespace{
 
 namespace radar_odometry {
 
-std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
+std::vector<SRadarPoint> VelFiltering(const std::vector<SRadarPoint> cloud, 
                                     const Velocity &predicted_vel,
                                     float margin)
 {
-    std::vector<RadarPoint> inliers;
+    std::vector<SRadarPoint> inliers;
     std::vector<int> vec_inliers;
 
     Eigen::Vector3d linear_vel = predicted_vel.linear;
@@ -27,7 +27,8 @@ std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud,
                                          cos(p_ele_rad) * sin(p_azim_rad), 
                                          sin(p_ele_rad));
         
-        double vel_predict = - point_direction_vector.dot(linear_vel + angular_vel.cross(ego_to_sensor_translation));
+        // double vel_predict = - point_direction_vector.dot(linear_vel + angular_vel.cross(ego_to_sensor_translation));
+        double vel_predict = - point_direction_vector.dot(linear_vel);
 
         if (std::abs(vel_predict - cloud[i].vel) <= margin) {
             vec_inliers.push_back(i);
@@ -42,7 +43,7 @@ std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud,
 }
 
 // v = v_x * cos(azim) + v_y * sin(azim)
-Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud)
+Eigen::Vector2d FitSine(const std::vector<SRadarPoint> cloud)
 {
     Eigen::MatrixXd A(cloud.size(), 2);
     Eigen::VectorXd b(cloud.size());
@@ -62,7 +63,7 @@ Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud)
     return coeffs;  // [vx, vy]
 }
 
-Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<int>& indices)
+Eigen::Vector2d FitSine(const std::vector<SRadarPoint> cloud, const std::vector<int>& indices)
 {
     Eigen::MatrixXd A(indices.size(), 2);
     Eigen::VectorXd b(indices.size());
@@ -82,9 +83,9 @@ Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<i
     return coeffs;  // [vx, vy]
 }
 
-std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations)
+std::vector<SRadarPoint> RansacFit(const std::vector<SRadarPoint> cloud, float margin, int max_iterations)
 {
-    std::vector<RadarPoint> inliers;
+    std::vector<SRadarPoint> inliers;
     std::vector<int> best_inliers;
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -128,7 +129,7 @@ std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float mar
     return inliers;
 }
 
-Velocity EgoMotionEstimation(const std::vector<RadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad)
+Velocity EgoMotionEstimation(const std::vector<SRadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad)
 {
     // v = v_x * cos(azim) + v_y * sin(azim)
     Eigen::Vector2d est_coeff = FitSine(cloud);

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(radar_odometry_ros)
 
-## Compile as C++14, supported in ROS Kinetic and newer
-add_compile_options(-std=c++14)
+## Compile as C++17, supported in ROS Kinetic and newer
+add_compile_options(-std=c++17)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -90,6 +90,8 @@ add_executable(${PROJECT_NAME}
     src/algorithm/preprocessing.cpp
     src/algorithm/registration.cpp
     src/algorithm/voxel_hash_map.cpp
+    src/evaluation/vod_evaluation.cpp
+    src/evaluation/ntu_evaluation.cpp
 )
 
 ## Rename C++ executable without prefix

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "sensor_msgs/PointCloud.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/point_cloud2_iterator.h"
 
@@ -60,8 +61,25 @@ POINT_CLOUD_REGISTER_POINT_STRUCT( PointXYZPRVAE,
                     ( float, ele_angle, ele_angle )
 )
 
+struct VodRadarPointType {
+    float x, y, z;       // 위치
+    float RCS;           // 레이다 반사율
+    float v_r;           // 속도
+    float v_r_compensated; // 보상된 속도
+    float time;          // 측정 시간
+};
 
-struct RadarPoint {
+struct RadarPoint
+{
+    PCL_ADD_POINT4D;      // position in [m]
+    float power;         // CFAR cell to side noise ratio in [dB]
+    float vel;  // Doppler velocity in [m/s]
+    float range;          // range in [m]
+    float RCS;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+}EIGEN_ALIGN16;
+
+struct SRadarPoint {
     Eigen::Vector3d pose;
     Eigen::Matrix4d cov;
 
@@ -69,11 +87,12 @@ struct RadarPoint {
     Eigen::Matrix4d sensor_pose;
 
 
-    double power;
+    double power; // TODO: Power residual? (07/15).
+    double rcs;
     double range; // m
     double vel; // mps
-    double azi_angle; // deg
-    double ele_angle; // deg
+    double azi_angle; // deg Right to Left
+    double ele_angle; // deg. Down to Up
 
     int frame_idx;
     double timestamp;
@@ -81,14 +100,14 @@ struct RadarPoint {
     bool is_static;
 
     // 생성자
-    RadarPoint()
+    SRadarPoint()
         : pose(Eigen::Vector3d::Zero()), cov(Eigen::Matrix4d::Identity()),
           local(Eigen::Vector3d::Zero()),
-          sensor_pose(Eigen::Matrix4d::Identity()), power(0.0),
+          sensor_pose(Eigen::Matrix4d::Identity()), power(0.0), rcs(0.0),
           range(0.0), vel(0.0), azi_angle(0.0), ele_angle(0.0),
           frame_idx(0), timestamp(0.0), is_static(false){}
 
-    ~RadarPoint(){
+    ~SRadarPoint(){
     };
 
     // reset 함수
@@ -98,6 +117,7 @@ struct RadarPoint {
         local.setZero();
         sensor_pose.setZero();
         power = 0.0;
+        rcs = 0.0;
         range = 0.0;
         vel = 0.0;
         azi_angle = 0.0;
@@ -107,6 +127,12 @@ struct RadarPoint {
         is_static = false;
     }
 };
+
+typedef struct {
+    double timestamp; 
+    std::vector<SRadarPoint> points;
+    std::string frame_id;
+} RadarDataStruct;
 
 struct Velocity {
     Eigen::Vector3d linear;  // 선형 속도
@@ -163,9 +189,9 @@ inline Eigen::Matrix4d CalculateTransform(const Velocity& velocity, double delta
     return transform;
 }
 
-inline RadarPoint GetCov(const std::vector<RadarPoint> &points){
+inline SRadarPoint GetCov(const std::vector<SRadarPoint> &points){
 
-    RadarPoint cov_point;
+    SRadarPoint cov_point;
 
     int num_points = points.size();
     
@@ -188,8 +214,8 @@ inline RadarPoint GetCov(const std::vector<RadarPoint> &points){
     return cov_point;
 }
 
-inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double azim_var_deg, double ele_var_deg){
-    RadarPoint cov_point = point;
+inline SRadarPoint CalPointCov(const SRadarPoint point, double range_var_m, double azim_var_deg, double ele_var_deg){
+    SRadarPoint cov_point = point;
     double dist = cov_point.range;
     // double s_x = std::max(dist * range_var_m, 0.1);
     double s_x = range_var_m;
@@ -214,8 +240,8 @@ inline RadarPoint CalPointCov(const RadarPoint point, double range_var_m, double
     return cov_point;
 }
 
-inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, double azim_var_deg){
-    RadarPoint cov_point = point;
+inline SRadarPoint CalPointCov2d(const SRadarPoint point, double range_var_m, double azim_var_deg){
+    SRadarPoint cov_point = point;
     double dist = sqrt(cov_point.pose.x()*cov_point.pose.x() + cov_point.pose.y()*cov_point.pose.y());
     // double s_x = std::max(dist * range_var_m, 0.1);
     double s_x = range_var_m;
@@ -237,20 +263,99 @@ inline RadarPoint CalPointCov2d(const RadarPoint point, double range_var_m, doub
     return cov_point;
 }
 
-inline void CalFramePointCov(std::vector<RadarPoint> &points, double range_var_m, double azim_var_deg, double ele_var_deg){
+inline void CalFramePointCov(std::vector<SRadarPoint> &points, double range_var_m, double azim_var_deg, double ele_var_deg){
     std::transform(points.cbegin(), points.cend(), points.begin(),
                    [&](const auto &point) {
-                        RadarPoint cov_point = CalPointCov(point, range_var_m, azim_var_deg, ele_var_deg);
+                        SRadarPoint cov_point = CalPointCov(point, range_var_m, azim_var_deg, ele_var_deg);
                         return cov_point;
                    });
 }
 
-inline void CalFramePointCov2d(std::vector<RadarPoint> &points, double range_var_m, double azim_var_deg){
+inline void CalFramePointCov2d(std::vector<SRadarPoint> &points, double range_var_m, double azim_var_deg){
     std::transform(points.cbegin(), points.cend(), points.begin(),
                    [&](const auto &point) {
-                        RadarPoint cov_point = CalPointCov2d(point, range_var_m, azim_var_deg);
+                        SRadarPoint cov_point = CalPointCov2d(point, range_var_m, azim_var_deg);
                         return cov_point;
                    });
+}
+
+inline void CalGridWiseRcs(std::vector<SRadarPoint> &points, const double grid_range, const double grid_angle_deg, const double thr) {
+    // 그리드 맵을 구성하는 자료구조 (range, angle)를 키로 하여 포인트를 저장
+    std::map<std::pair<int, int>, std::vector<SRadarPoint*>> grid_map;
+
+    // 포인트를 그리드에 할당
+    for (auto& point : points) {
+        int range_idx = static_cast<int>(point.range / grid_range);
+        int angle_idx = static_cast<int>(point.azi_angle / grid_angle_deg);
+        grid_map[std::make_pair(range_idx, angle_idx)].push_back(&point);
+    }
+
+    // 각 그리드 내에서 rcs를 정규화
+    for (auto& grid : grid_map) {
+        auto& grid_points = grid.second;
+        if (grid_points.empty()) continue;
+
+        // 그리드 내 최소 및 최대 rcs 값 찾기
+        auto minmax_rcs = std::minmax_element(grid_points.begin(), grid_points.end(),
+                                              [](const SRadarPoint* a, const SRadarPoint* b) {
+                                                  return a->rcs < b->rcs;
+                                              });
+
+        double min_rcs = (*minmax_rcs.first)->rcs;
+        double max_rcs = (*minmax_rcs.second)->rcs;
+
+        // 최대와 최소의 차이가 thr 이하인 경우 모든 rcs를 0으로 설정
+        if (max_rcs - min_rcs <= thr) {
+            for (auto* point : grid_points) {
+                point->rcs = 0.0;
+            }
+        } else {
+            // rcs 값을 0에서 1로 정규화
+            for (auto* point : grid_points) {
+                point->rcs = (point->rcs - min_rcs) / (max_rcs - min_rcs);
+            }
+        }
+    }
+}
+
+inline void CalGridWiseRcs(std::vector<SRadarPoint> &points, const double grid_range, const double grid_azi_angle_deg, const double grid_ele_angle_deg, const double thr) {
+    // 그리드 맵을 구성하는 자료구조 (range, azi_angle, ele_angle)를 키로 하여 포인트를 저장
+    std::map<std::tuple<int, int, int>, std::vector<SRadarPoint*>> grid_map;
+
+    // 포인트를 그리드에 할당
+    for (auto& point : points) {
+        int range_idx = static_cast<int>(point.range / grid_range);
+        int azi_angle_idx = static_cast<int>(point.azi_angle / grid_azi_angle_deg);
+        int ele_angle_idx = static_cast<int>(point.ele_angle / grid_ele_angle_deg);
+        grid_map[std::make_tuple(range_idx, azi_angle_idx, ele_angle_idx)].push_back(&point);
+    }
+
+    // 각 그리드 내에서 rcs를 정규화
+    for (auto& grid : grid_map) {
+        auto& grid_points = grid.second;
+        if (grid_points.empty()) continue;
+
+        // 그리드 내 최소 및 최대 rcs 값 찾기
+        auto minmax_rcs = std::minmax_element(grid_points.begin(), grid_points.end(),
+                                              [](const SRadarPoint* a, const SRadarPoint* b) {
+                                                  return a->rcs < b->rcs;
+                                              });
+
+        double min_rcs = (*minmax_rcs.first)->rcs;
+        double max_rcs = (*minmax_rcs.second)->rcs;
+
+        // 최대와 최소의 차이가 thr 이하인 경우 모든 rcs를 0으로 설정
+        if (max_rcs - min_rcs <= thr) {
+            for (auto* point : grid_points) {
+                point->rcs = 0.0;
+            }
+        } else {
+            // rcs 값을 0에서 1로 정규화
+            for (auto* point : grid_points) {
+                point->rcs = (point->rcs - min_rcs) / (max_rcs - min_rcs);
+            }
+        }
+    }
 }
 
 inline std::string FixFrameId(const std::string &frame_id) {
@@ -270,6 +375,7 @@ inline std::unique_ptr<sensor_msgs::PointCloud2> CreatePointCloud2Msg(const size
     offset = addPointField(*cloud_msg, "y", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "z", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "power", 1, sensor_msgs::PointField::FLOAT32, offset);
+    offset = addPointField(*cloud_msg, "rcs", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "range", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "vel", 1, sensor_msgs::PointField::FLOAT32, offset);
     offset = addPointField(*cloud_msg, "azi_angle", 1, sensor_msgs::PointField::FLOAT32, offset);
@@ -289,7 +395,7 @@ inline std::unique_ptr<sensor_msgs::PointCloud2> CreatePointCloud2Msg(const size
     return cloud_msg;
 }
 
-inline void FillPointCloud2XYZ(const std::vector<RadarPoint> &points, sensor_msgs::PointCloud2 &msg) {
+inline void FillPointCloud2XYZ(const std::vector<SRadarPoint> &points, sensor_msgs::PointCloud2 &msg) {
     sensor_msgs::PointCloud2Iterator<float> msg_x(msg, "x");
     sensor_msgs::PointCloud2Iterator<float> msg_y(msg, "y");
     sensor_msgs::PointCloud2Iterator<float> msg_z(msg, "z");
@@ -301,7 +407,7 @@ inline void FillPointCloud2XYZ(const std::vector<RadarPoint> &points, sensor_msg
     sensor_msgs::PointCloud2Iterator<float> msg_ele_angle(msg, "ele_angle");
     for (size_t i = 0; i < points.size(); i++, ++msg_x, ++msg_y, ++msg_z, 
             ++msg_power, ++msg_range, ++msg_vel, ++msg_azi_angle, ++msg_ele_angle) {
-        const RadarPoint &point = points[i];
+        const SRadarPoint &point = points[i];
         *msg_x = point.pose.x();
         *msg_y = point.pose.y();
         *msg_z = point.pose.z();
@@ -314,8 +420,27 @@ inline void FillPointCloud2XYZ(const std::vector<RadarPoint> &points, sensor_msg
     }
 }
 
-inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::PointCloud2::ConstPtr msg) {
-    std::vector<RadarPoint> points;
+inline void FillVodPointCloud2XYZ(const std::vector<RadarPoint> &points, sensor_msgs::PointCloud2 &msg) {
+    sensor_msgs::PointCloud2Iterator<float> msg_x(msg, "x");
+    sensor_msgs::PointCloud2Iterator<float> msg_y(msg, "y");
+    sensor_msgs::PointCloud2Iterator<float> msg_z(msg, "z");
+
+    sensor_msgs::PointCloud2Iterator<float> msg_rcs(msg, "RCS");
+    sensor_msgs::PointCloud2Iterator<float> msg_vel(msg, "vel");
+    for (size_t i = 0; i < points.size(); i++, ++msg_x, ++msg_y, ++msg_z, 
+            ++msg_rcs, ++msg_vel) {
+        const RadarPoint &point = points[i];
+        *msg_x = point.x;
+        *msg_y = point.y;
+        *msg_z = point.z;
+
+        *msg_rcs = point.power;
+        *msg_vel = point.vel;
+    }
+}
+
+inline std::vector<SRadarPoint> AfiPointCloud2ToRadarPoints(const sensor_msgs::PointCloud2::ConstPtr msg) {
+    std::vector<SRadarPoint> points;
     points.reserve(msg->height * msg->width);
     sensor_msgs::PointCloud2ConstIterator<float> msg_x(*msg, "x");
     sensor_msgs::PointCloud2ConstIterator<float> msg_y(*msg, "y");
@@ -331,7 +456,7 @@ inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::Point
     for (size_t i = 0; i < msg->height * msg->width; ++i, ++msg_x, ++msg_y, ++msg_z, 
             ++msg_power, ++msg_range, ++msg_vel, ++msg_azi_angle, ++msg_ele_angle) {
 
-        RadarPoint iter_point;
+        SRadarPoint iter_point;
 
         iter_point.pose <<*msg_x, *msg_y, *msg_z; // Canbe Transformed
         iter_point.local <<*msg_x, *msg_y, *msg_z; // Fixed Local frame. DO NOT CHANGE AFTER IT TODO: Make it const
@@ -347,10 +472,59 @@ inline std::vector<RadarPoint> PointCloud2ToRadarPoints(const sensor_msgs::Point
     return points;
 }
 
-inline std::unique_ptr<sensor_msgs::PointCloud2> EigenToPointCloud2(const std::vector<RadarPoint> &points,
+inline std::vector<SRadarPoint> NtuPointCloudToRadarPoints(const sensor_msgs::PointCloud::ConstPtr& msg) {
+    std::vector<SRadarPoint> points;
+    points.reserve(msg->points.size());
+
+    double time_stamp = msg->header.stamp.toSec();
+
+    for (size_t i = 0; i < msg->points.size(); ++i) {
+        SRadarPoint iter_point;
+        
+        iter_point.pose << msg->points[i].x, msg->points[i].y, msg->points[i].z;
+        iter_point.local << msg->points[i].x, msg->points[i].y, msg->points[i].z;
+        iter_point.timestamp = time_stamp;
+
+        // Find corresponding channel values
+        for (size_t j = 0; j < msg->channels.size(); ++j) {
+            if (msg->channels[j].name == "Alpha") {
+                iter_point.azi_angle = msg->channels[j].values[i] * (-1.0);
+            } else if (msg->channels[j].name == "Beta") {
+                iter_point.ele_angle = msg->channels[j].values[i] * (-1.0);
+            } else if (msg->channels[j].name == "Doppler") {
+                iter_point.vel = msg->channels[j].values[i];
+            } else if (msg->channels[j].name == "Power") {
+                iter_point.rcs = msg->channels[j].values[i];
+            } else if (msg->channels[j].name == "Range") {
+                iter_point.range = msg->channels[j].values[i];
+            }
+            //  else if (msg->channels[j].name == "x") {
+            //     iter_point.pose.x() = msg->channels[j].values[i];
+            // } else if (msg->channels[j].name == "y") {
+            //     iter_point.pose.y() = msg->channels[j].values[i];
+            // } else if (msg->channels[j].name == "z") {
+            //     iter_point.pose.z() = msg->channels[j].values[i];
+            // }
+        }
+
+        points.emplace_back(iter_point);
+    }
+
+    return points;
+}
+
+
+inline std::unique_ptr<sensor_msgs::PointCloud2> SRadarPointToPointCloud2(const std::vector<SRadarPoint> &points,
                                                        const std_msgs::Header &header) {
     auto msg = CreatePointCloud2Msg(points.size(), header);
     FillPointCloud2XYZ(points, *msg);
+    return msg;
+}
+
+inline std::unique_ptr<sensor_msgs::PointCloud2> VodToPointCloud2(const std::vector<RadarPoint> &points,
+                                                       const std_msgs::Header &header) {
+    auto msg = CreatePointCloud2Msg(points.size(), header);
+    FillVodPointCloud2XYZ(points, *msg);
     return msg;
 }
 

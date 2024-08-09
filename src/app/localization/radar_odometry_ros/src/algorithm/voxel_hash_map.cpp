@@ -7,8 +7,8 @@ struct ResultTuple {
         source.reserve(n);
         target.reserve(n);
     }
-    std::vector<RadarPoint> source;
-    std::vector<RadarPoint> target;
+    std::vector<SRadarPoint> source;
+    std::vector<SRadarPoint> target;
 };
 }
 
@@ -16,7 +16,7 @@ namespace radar_odometry {
 
 VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
     const RadarPointVector &points, double max_correspondance_distance) const {
-    auto GetClosestNeighboor = [&](const RadarPoint &point) {
+    auto GetClosestNeighboor = [&](const SRadarPoint &point) {
         auto kx = static_cast<int>(point.pose[0] / voxel_size_);
         auto ky = static_cast<int>(point.pose[1] / voxel_size_);
         auto kz = static_cast<int>(point.pose[2] / voxel_size_);
@@ -30,7 +30,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
             }
         }
 
-        using RadarPointVector = std::vector<RadarPoint>;
+        using RadarPointVector = std::vector<SRadarPoint>;
         RadarPointVector neighboors;
         neighboors.reserve(27 * max_points_per_voxel_);
         for (const auto &voxel : voxels) {
@@ -46,7 +46,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
         }
 
         // 최근접 탐색
-        RadarPoint closest_neighbor;
+        SRadarPoint closest_neighbor;
         double closest_distance2 = std::numeric_limits<double>::max();
         for (const auto &neighbor : neighboors) {
             double distance = (neighbor.pose - point.pose).squaredNorm();
@@ -62,7 +62,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
     // 최대 탐색 거리 제한
     RadarPointVector source, target;
     for (const auto &point : points) {
-        RadarPoint closest_neighboors = GetClosestNeighboor(point);
+        SRadarPoint closest_neighboors = GetClosestNeighboor(point);
         if ((closest_neighboors.pose - point.pose).norm() < max_correspondance_distance) {
             source.emplace_back(point);
             target.emplace_back(closest_neighboors);
@@ -72,9 +72,9 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondences(
     return std::make_tuple(source, target);
 }
 
-std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>>  VoxelHashMap::GetCorrespondencesWithIdx(
+std::tuple<std::vector<int>, std::vector<SRadarPoint>, std::vector<SRadarPoint>>  VoxelHashMap::GetCorrespondencesWithIdx(
     const RadarPointVector &points, double max_correspondance_distance) const {
-    auto GetClosestNeighboor = [&](const RadarPoint &point) {
+    auto GetClosestNeighboor = [&](const SRadarPoint &point) {
         auto kx = static_cast<int>(point.pose[0] / voxel_size_);
         auto ky = static_cast<int>(point.pose[1] / voxel_size_);
         auto kz = static_cast<int>(point.pose[2] / voxel_size_);
@@ -88,7 +88,7 @@ std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>>  
             }
         }
 
-        using RadarPointVector = std::vector<RadarPoint>;
+        using RadarPointVector = std::vector<SRadarPoint>;
         RadarPointVector neighboors;
         neighboors.reserve(27 * max_points_per_voxel_);
         for (const auto &voxel : voxels) {
@@ -104,7 +104,7 @@ std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>>  
         }
 
         // 최근접 탐색
-        RadarPoint closest_neighbor;
+        SRadarPoint closest_neighbor;
         double closest_distance2 = std::numeric_limits<double>::max();
         for (const auto &neighbor : neighboors) {
             double distance = (neighbor.pose - point.pose).squaredNorm();
@@ -122,7 +122,7 @@ std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>>  
     RadarPointVector source, target;
     int index = 0;
     for (const auto &point : points) {
-        RadarPoint closest_neighboors = GetClosestNeighboor(point);
+        SRadarPoint closest_neighboors = GetClosestNeighboor(point);
         if ((closest_neighboors.pose - point.pose).norm() < max_correspondance_distance) {
             source.emplace_back(point);
             target.emplace_back(closest_neighboors);
@@ -137,7 +137,7 @@ std::tuple<std::vector<int>, std::vector<RadarPoint>, std::vector<RadarPoint>>  
 VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
     const RadarPointVector &points, double max_correspondance_distance, int max_cov_point) const {
 
-    auto GetClosestNeighboor = [&](const RadarPoint &point) {
+    auto GetClosestNeighboor = [&](const SRadarPoint &point) {
         auto kx = static_cast<int>(point.pose[0] / voxel_size_);
         auto ky = static_cast<int>(point.pose[1] / voxel_size_);
         auto kz = static_cast<int>(point.pose[2] / voxel_size_);
@@ -151,7 +151,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
             }
         }
 
-        using RadarPointVector = std::vector<RadarPoint>;
+        using RadarPointVector = std::vector<SRadarPoint>;
         RadarPointVector neighboors;
         neighboors.reserve(27 * max_points_per_voxel_);
         for (const auto &voxel : voxels) {
@@ -167,12 +167,12 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
         }
 
         // 비교 함수: a가 b보다 멀리 있으면 true를 반환
-        auto compare = [&](const std::pair<double, RadarPoint> &a, const std::pair<double, RadarPoint> &b) {
+        auto compare = [&](const std::pair<double, SRadarPoint> &a, const std::pair<double, SRadarPoint> &b) {
             return a.first > b.first;
         };
 
         // 우선순위 큐 선언
-        std::priority_queue<std::pair<double, RadarPoint>, std::vector<std::pair<double, RadarPoint>>, decltype(compare)> pq(compare);
+        std::priority_queue<std::pair<double, SRadarPoint>, std::vector<std::pair<double, SRadarPoint>>, decltype(compare)> pq(compare);
 
         // 모든 이웃 포인트에 대해
         for (const auto &neighbor : neighboors) {
@@ -195,7 +195,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
             pq.pop();
         }
 
-        RadarPoint closest_neighbor = GetCov(closest_neighboors);
+        SRadarPoint closest_neighbor = GetCov(closest_neighboors);
 
         return closest_neighbor;
     };
@@ -203,7 +203,7 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
     // 최대 탐색 거리 제한
     RadarPointVector source, target;
     for (const auto &point : points) {
-        RadarPoint closest_neighboors = GetClosestNeighboor(point);
+        SRadarPoint closest_neighboors = GetClosestNeighboor(point);
         if ((closest_neighboors.pose - point.pose).norm() < max_correspondance_distance) {
             source.emplace_back(point);
             target.emplace_back(closest_neighboors);
@@ -213,8 +213,8 @@ VoxelHashMap::RadarPointVectorTuple VoxelHashMap::GetCorrespondencesCov(
     return std::make_tuple(source, target);
 }
 
-std::vector<RadarPoint> VoxelHashMap::Pointcloud() const {
-    std::vector<RadarPoint> points;
+std::vector<SRadarPoint> VoxelHashMap::Pointcloud() const {
+    std::vector<SRadarPoint> points;
     points.reserve(max_points_per_voxel_ * map_.size()); // 복셀내 최대 포인트 수 * 전체 복셀수  할당
     for (const auto &[voxel, voxel_block] : map_) { // 각 복셀 순회
         (void)voxel;
@@ -225,8 +225,8 @@ std::vector<RadarPoint> VoxelHashMap::Pointcloud() const {
     return points;
 }
 
-std::vector<RadarPoint> VoxelHashMap::StaticPointcloud() const {
-    std::vector<RadarPoint> points;
+std::vector<SRadarPoint> VoxelHashMap::StaticPointcloud() const {
+    std::vector<SRadarPoint> points;
     points.reserve(max_points_per_voxel_ * map_.size()); // 복셀내 최대 포인트 수 * 전체 복셀수  할당
     for (const auto &[voxel, voxel_block] : map_) { // 각 복셀 순회
         (void)voxel;
@@ -254,8 +254,8 @@ void VoxelHashMap::Update(const RadarPointVector &points, const Eigen::Matrix4d 
     Eigen::Vector3d translation = pose.block<3, 1>(0, 3);
     
     std::transform(points.cbegin(), points.cend(), points_transformed.begin(),
-                   [&](const RadarPoint &point) {
-                       RadarPoint transformed_point = point; // 속성 복사
+                   [&](const SRadarPoint &point) {
+                       SRadarPoint transformed_point = point; // 속성 복사
                        transformed_point.sensor_pose = pose; // 센서 위치 저장
                        transformed_point.pose = rotation * point.pose + translation; // 위치만 변경
                        return transformed_point;
@@ -270,8 +270,8 @@ void VoxelHashMap::UpdateGlobal(const RadarPointVector &points, const Eigen::Mat
     Eigen::Vector3d translation = pose.block<3, 1>(0, 3);
     
     std::transform(points.cbegin(), points.cend(), points_transformed.begin(),
-                   [&](const RadarPoint &point) {
-                       RadarPoint transformed_point = point; // 속성 복사
+                   [&](const SRadarPoint &point) {
+                       SRadarPoint transformed_point = point; // 속성 복사
                        transformed_point.sensor_pose = pose; // 센서 위치 저장
                        return transformed_point;
                    });
@@ -285,7 +285,7 @@ void VoxelHashMap::AddPoints(const RadarPointVector &points) {
     if(points.size() == 0)
         return;
 
-    std::for_each(points.cbegin(), points.cend(), [&](const auto &point) { // point = RadarPoint
+    std::for_each(points.cbegin(), points.cend(), [&](const auto &point) { // point = SRadarPoint
         // auto voxel = (point.pose / voxel_size_).cast<int>();
         auto voxel = Voxel((point.pose / voxel_size_).template cast<int>());
         auto search = map_.find(voxel);

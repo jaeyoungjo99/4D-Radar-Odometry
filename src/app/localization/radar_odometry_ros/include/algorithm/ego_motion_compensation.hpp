@@ -25,20 +25,20 @@
 
 namespace radar_odometry {
 
-std::vector<RadarPoint> VelFiltering(const std::vector<RadarPoint> cloud, 
+std::vector<SRadarPoint> VelFiltering(const std::vector<SRadarPoint> cloud, 
                                                 const Velocity &predicted_vel,
                                                 float margin);
 
 // Return coeff of y = c_0 * cos(x) + c_1 * sin(x)
-Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud);
+Eigen::Vector2d FitSine(const std::vector<SRadarPoint> cloud);
 
 // Return coeff of y = c_0 * cos(x) + c_1 * sin(x)
-Eigen::Vector2d FitSine(const std::vector<RadarPoint> cloud, const std::vector<int>& indices);
+Eigen::Vector2d FitSine(const std::vector<SRadarPoint> cloud, const std::vector<int>& indices);
 
 // Return Ransac outlier removed pointcloud
-std::vector<RadarPoint> RansacFit(const std::vector<RadarPoint> cloud, float margin, int max_iterations);
+std::vector<SRadarPoint> RansacFit(const std::vector<SRadarPoint> cloud, float margin, int max_iterations);
 
-Velocity EgoMotionEstimation(const std::vector<RadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad);
+Velocity EgoMotionEstimation(const std::vector<SRadarPoint> cloud, const double ego_to_radar_x_m, const double ego_to_radar_yaw_rad);
 
 bool CheckVelValidation(const Eigen::Matrix4d & est_motion);
 bool CheckVelValidation(const Velocity & est_motion);
