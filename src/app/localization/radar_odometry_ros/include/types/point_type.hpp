@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "sensor_msgs/PointCloud.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/point_cloud2_iterator.h"
 
@@ -470,6 +471,48 @@ inline std::vector<SRadarPoint> AfiPointCloud2ToRadarPoints(const sensor_msgs::P
     }
     return points;
 }
+
+inline std::vector<SRadarPoint> NtuPointCloudToRadarPoints(const sensor_msgs::PointCloud::ConstPtr& msg) {
+    std::vector<SRadarPoint> points;
+    points.reserve(msg->points.size());
+
+    double time_stamp = msg->header.stamp.toSec();
+
+    for (size_t i = 0; i < msg->points.size(); ++i) {
+        SRadarPoint iter_point;
+        
+        iter_point.pose << msg->points[i].x, msg->points[i].y, msg->points[i].z;
+        iter_point.local << msg->points[i].x, msg->points[i].y, msg->points[i].z;
+        iter_point.timestamp = time_stamp;
+
+        // Find corresponding channel values
+        for (size_t j = 0; j < msg->channels.size(); ++j) {
+            if (msg->channels[j].name == "Alpha") {
+                iter_point.azi_angle = msg->channels[j].values[i] * (-1.0);
+            } else if (msg->channels[j].name == "Beta") {
+                iter_point.ele_angle = msg->channels[j].values[i] * (-1.0);
+            } else if (msg->channels[j].name == "Doppler") {
+                iter_point.vel = msg->channels[j].values[i];
+            } else if (msg->channels[j].name == "Power") {
+                iter_point.rcs = msg->channels[j].values[i];
+            } else if (msg->channels[j].name == "Range") {
+                iter_point.range = msg->channels[j].values[i];
+            }
+            //  else if (msg->channels[j].name == "x") {
+            //     iter_point.pose.x() = msg->channels[j].values[i];
+            // } else if (msg->channels[j].name == "y") {
+            //     iter_point.pose.y() = msg->channels[j].values[i];
+            // } else if (msg->channels[j].name == "z") {
+            //     iter_point.pose.z() = msg->channels[j].values[i];
+            // }
+        }
+
+        points.emplace_back(iter_point);
+    }
+
+    return points;
+}
+
 
 inline std::unique_ptr<sensor_msgs::PointCloud2> SRadarPointToPointCloud2(const std::vector<SRadarPoint> &points,
                                                        const std_msgs::Header &header) {

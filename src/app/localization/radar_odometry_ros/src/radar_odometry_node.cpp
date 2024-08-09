@@ -39,7 +39,7 @@ void RadarOdometryNode::Init()
 
     ProcessINI();
 
-    // s_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_pc1_, 10, &RadarOdometryNode::CallbackPointCloud, this, ros::TransportHints().tcpNoDelay());    
+    s_point_cloud_ = nh.subscribe(cfg_str_sensor_topic_pc1_, 10, &RadarOdometryNode::CallbackPointCloud, this, ros::TransportHints().tcpNoDelay());    
     s_point_cloud2_ = nh.subscribe(cfg_str_sensor_topic_pc2_, 10, &RadarOdometryNode::CallbackPointCloud2, this, ros::TransportHints().tcpNoDelay());                               
     s_can_ = nh.subscribe(cfg_str_can_topic_, 10, &RadarOdometryNode::CallbackCAN, this, ros::TransportHints().tcpNoDelay());    
     s_imu_ = nh.subscribe(cfg_str_imu_topic_, 10, &RadarOdometryNode::CallbackIMU, this, ros::TransportHints().tcpNoDelay());    
@@ -83,14 +83,11 @@ void RadarOdometryNode::Run()
         cur_can_struct = i_can_struct_;
     }
 
-    if(cfg_str_sensor_type_=="lidar"){
 
-    }
-    else{
-        ROS_INFO("RadarOdometryNode: RunRadarOdometry");
+    ROS_INFO("RadarOdometryNode: RunRadarOdometry");
 
-        RunRadarOdometry(cur_radar_struct);
-    }
+    RunRadarOdometry(cur_radar_struct);
+
     
 
     b_is_new_point_cloud_ = false;
@@ -108,7 +105,7 @@ void RadarOdometryNode::Publish()
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time::now();
     odom.header.frame_id = "world";
-    odom.child_frame_id = "afi910";
+    odom.child_frame_id = i_radar_header_.frame_id;
 
     // 포즈 설정
     odom.pose.pose.position.x = calibrated_radar_pose(0, 3);
@@ -136,11 +133,33 @@ void RadarOdometryNode::Publish()
     odom.twist.twist.angular.z = 0.0;
 
     p_odom_.publish(odom);
+
+
+        // Publish the transform
+    geometry_msgs::TransformStamped transform_stamped;
+    transform_stamped.header.stamp = i_radar_header_.stamp;
+    transform_stamped.header.frame_id = "world";
+    transform_stamped.child_frame_id = i_radar_header_.frame_id;
+
+    transform_stamped.transform.translation.x = calibrated_radar_pose(0, 3);
+    transform_stamped.transform.translation.y = calibrated_radar_pose(1, 3);
+    transform_stamped.transform.translation.z = calibrated_radar_pose(2, 3);
+
+    transform_stamped.transform.rotation.x = quaternion.x();
+    transform_stamped.transform.rotation.y = quaternion.y();
+    transform_stamped.transform.rotation.z = quaternion.z();
+    transform_stamped.transform.rotation.w = quaternion.w();
+
+    tf_broadcaster_.sendTransform(transform_stamped);
 }
 
 void RadarOdometryNode::Terminate()
-{
-
+{   
+    std::cout<<"[RadarOdometryNode] Terminate"<<std::endl;
+    if(cfg_str_dataset_ == "ntu" && cfg_b_ntu_eval_result_ == true){
+        ntu_evaluation_.Evaluation(vec_time_radar_pose_mat_, 
+                            cfg_str_ntu_eval_result_path_, cfg_str_ntu_calib_path_);
+    }
 }
 
 void RadarOdometryNode::ProcessINI()
@@ -148,9 +167,6 @@ void RadarOdometryNode::ProcessINI()
     if (v_ini_parser_.IsFileUpdated()){
         NodeHandle nh;
 
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_type", cfg_str_sensor_type_) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_type");
-        }
         if ( v_ini_parser_.ParseConfig("radar_odometry", "sensor_topic_pc1", cfg_str_sensor_topic_pc1_) == false ) {
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/sensor_topic_pc1");
         }
@@ -263,13 +279,11 @@ void RadarOdometryNode::ProcessINI()
             ROS_ERROR_STREAM("Failed to get param: /radar_odometry/output_map_max_range");
         }
 
-        if ( v_ini_parser_.ParseConfig("radar_odometry", "vod_dt", vod_dt_) == false ) {
-            ROS_ERROR_STREAM("Failed to get param: /radar_odometry/vod_dt_");
-        }
 
         ROS_WARN("RadarOdometryNode: INI Updated!");
     }
 }
+
 
 
 void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
@@ -283,15 +297,16 @@ void RadarOdometryNode::RunRadarOdometry(RadarDataStruct i_radar_struct)
     const auto &[frame, frame_global] =  odometry_.RegisterPoints(i_radar_struct.points, i_radar_struct.timestamp);
     radar_pose_ = odometry_.poses().back();
 
+    if(cfg_b_ntu_eval_result_ == true){
+        vec_time_radar_pose_mat_.push_back(std::make_pair(i_radar_struct.timestamp, radar_pose_));
+    }
+
     std::chrono::duration<double>run_radar_odometry_time_sec = std::chrono::system_clock::now() - run_radar_odometry_start_time;
 
     ROS_INFO_STREAM("RadarOdometryNode: Total Time sec:  " << run_radar_odometry_time_sec.count());
-
-    auto frame_header = i_point_cloud2_msg_.header;
-    frame_header.frame_id = "afi910";
     
 
-    auto local_map_header = i_point_cloud2_msg_.header;
+    std_msgs::Header local_map_header = i_radar_header_;
     local_map_header.frame_id = "world";
 
     o_vel_comp_radar_cloud_ = *SRadarPointToPointCloud2(frame_global, local_map_header);
@@ -317,10 +332,15 @@ int main(int argc, char** argv) {
 
     ROS_INFO("Complete to get parameters! (ID: %d, Period: %.3f)", id, period);
 
-    bool b_flag_run_vod_dataset = false;
-    nh.getParam("/radar_odometry_ros/b_flag_run_vod_dataset", b_flag_run_vod_dataset);
+    nh.getParam("/radar_odometry_ros/dataset", main_task.cfg_str_dataset_);
+    nh.getParam("/radar_odometry_ros/b_ntu_eval_result", main_task.cfg_b_ntu_eval_result_);
 
-    if(b_flag_run_vod_dataset){
+    nh.getParam("/radar_odometry_ros/ntu_gt_odom_path", main_task.cfg_str_ntu_gt_odom_path_);
+    nh.getParam("/radar_odometry_ros/ntu_eval_result_path", main_task.cfg_str_ntu_eval_result_path_);
+    nh.getParam("/radar_odometry_ros/ntu_calib_path", main_task.cfg_str_ntu_calib_path_);
+    
+
+    if(main_task.cfg_str_dataset_ == "vod"){
         // main_task.ProcessRadarFiles();
         main_task.vod_evaluation_.ProcessRadarFiles();
         std::cout<<"HEllo"<<std::endl;
@@ -329,7 +349,6 @@ int main(int argc, char** argv) {
         
         main_task.Exec();
     }
-
 
 
     return 0;

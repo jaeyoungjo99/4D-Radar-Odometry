@@ -1,17 +1,28 @@
 <launch>
+  <!-- afi, vod, ntu -->
+  <arg name="dataset" default="ntu" />
   <rosparam file="config/system.yaml" command="load"/>   
   <node pkg="radar_odometry_ros" type="radar_odometry_ros" name="radar_odometry_ros" output="screen" respawn="false">
-    <param name="b_flag_run_vod_dataset"  value="true"/>
+    <param name="dataset" value="$(arg dataset)"/>
     <param name="b_debug_mode"            value="false"/>
+
+    <!-- vod -->
     <!-- 03 04 09 17 19 22 24 -->
     <param name="vod_seq_folder_path"     value="/mnt/c/Users/Alien02/Documents/rosbag/View-of-Delft/testset/03"/>
     <param name="b_eval_whold_seq"        value="false"/> 
     <param name="vod_eval_folder_path"    value="/mnt/c/Users/Alien02/Documents/rosbag/View-of-Delft/4d_radar_odometry_results/"/>
     
+    <!-- ntu -->
+    <param name="b_ntu_eval_result"            value="true"/>
+    <param name="ntu_gt_odom_path"         value="/mnt/c/Users/Alien02/Documents/rosbag/ntu/loop/gt_odom.txt"/>
+    <param name="ntu_eval_result_path"     value="/mnt/c/Users/Alien02/Documents/rosbag/ntu/loop/"/>
+    <param name="ntu_calib_path"     value="/mnt/c/Users/Alien02/Documents/rosbag/ntu/calib/calib_radar_to_imu.txt"/>
+
   </node>
 
     <arg name="rviz" default="true" />
-    <group if="$(arg rviz)">
-        <node pkg="rviz" type="rviz" name="rviz" args="-d $(find radar_odometry_ros)/rviz/radar_odom.rviz" />
+    <!-- <group if="$(arg rviz)"> -->
+    <group if="$(eval arg('dataset') == 'vod')">
+        <node pkg="rviz" type="rviz" name="rviz" args="-d $(find radar_odometry_ros)/rviz/vod_eval.rviz" />
     </group>
 </launch>

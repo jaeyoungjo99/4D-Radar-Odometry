@@ -88,6 +88,7 @@
 
 #include "radar_odometry.hpp"
 #include "evaluation/vod_evaluation.hpp"
+#include "evaluation/ntu_evaluation.hpp"
 
 // Namespace
 using namespace ros;
@@ -128,6 +129,21 @@ class RadarOdometryNode : public AtomTask {
         geometry_msgs::PoseStamped radar_odom_pose_stamped_;
 
     private:
+        inline void CallbackPointCloud(const sensor_msgs::PointCloud::ConstPtr& msg) {
+            std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
+
+            i_point_cloud1_msg_ = *msg;
+            const auto points =  NtuPointCloudToRadarPoints(msg);
+
+            i_radar_struct_.timestamp = msg->header.stamp.toSec();
+            i_radar_struct_.points = points;
+            i_radar_struct_.frame_id = msg->header.frame_id;
+
+            i_radar_header_ = msg->header;
+
+            b_is_new_point_cloud_ = true;
+
+        }
         inline void CallbackPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg) {
             std::lock_guard<std::mutex> lock(mutex_main_point_cloud_);
 
@@ -137,6 +153,8 @@ class RadarOdometryNode : public AtomTask {
             i_radar_struct_.timestamp = msg->header.stamp.toSec();
             i_radar_struct_.points = points;
             i_radar_struct_.frame_id = msg->header.frame_id;
+
+            i_radar_header_ = msg->header;
 
             b_is_new_point_cloud_ = true;
 
@@ -161,8 +179,11 @@ class RadarOdometryNode : public AtomTask {
 
         void RunRadarOdometry(RadarDataStruct i_radar_struct);
 
+
+
     public:
         VodEvaluation vod_evaluation_;
+        NtuEvaluation ntu_evaluation_;
 
     private:
         mutex mutex_main_point_cloud_;
@@ -183,6 +204,7 @@ class RadarOdometryNode : public AtomTask {
         // input
         sensor_msgs::PointCloud2 i_point_cloud2_msg_;
         sensor_msgs::PointCloud i_point_cloud1_msg_;
+        std_msgs::Header i_radar_header_;
 
         // output
         sensor_msgs::PointCloud2 o_vel_comp_radar_cloud_;
@@ -212,12 +234,23 @@ class RadarOdometryNode : public AtomTask {
         Eigen::Matrix4d radar_pose_;
         Eigen::Matrix4d last_radar_pose_;
 
+        std::vector<std::pair<double, Eigen::Matrix4d>> vec_time_radar_pose_mat_;
+        // TF
+
+        tf2_ros::TransformBroadcaster tf_broadcaster_;
+
+    public:
         // Configure
-        std::string cfg_str_sensor_type_;
+        std::string cfg_str_dataset_;
         std::string cfg_str_sensor_topic_pc1_;
         std::string cfg_str_sensor_topic_pc2_;
         std::string cfg_str_can_topic_;
         std::string cfg_str_imu_topic_;
+
+        bool cfg_b_ntu_eval_result_;
+        std::string cfg_str_ntu_gt_odom_path_;
+        std::string cfg_str_ntu_eval_result_path_;
+        std::string cfg_str_ntu_calib_path_;
 
         int cfg_i_odometry_type_;
         int cfg_i_icp_type_;
@@ -228,12 +261,9 @@ class RadarOdometryNode : public AtomTask {
 
         radar_odometry::pipeline::RadarOdometry odometry_;
         radar_odometry::pipeline::RadarOdometryConfig config_;
-
-        double vod_dt_ = 0.12;
-
         
         
         
 };
 
-#endif  // __CAD_REGISTRATION_HPP__
+#endif 

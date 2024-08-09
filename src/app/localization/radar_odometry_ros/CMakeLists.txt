@@ -91,6 +91,7 @@ add_executable(${PROJECT_NAME}
     src/algorithm/registration.cpp
     src/algorithm/voxel_hash_map.cpp
     src/evaluation/vod_evaluation.cpp
+    src/evaluation/ntu_evaluation.cpp
 )
 
 ## Rename C++ executable without prefix
